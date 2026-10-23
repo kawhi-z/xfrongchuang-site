@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>生而为谁 · 按真实统计，随机出生一次</title>
+    <meta name="description" content="按真实的出生统计随机投胎：国家、城乡、家境、性别全凭抽签。过一年、做选择，走完一生，再和同一秒出生的 4 个人比一比。免费、免注册，数据只存在你的浏览器里。" />
+    <meta name="theme-color" content="#F4F1EA" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#111215" media="(prefers-color-scheme: dark)" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="生而为谁" />
+    <meta property="og:title" content="生而为谁 · 80 亿人里，你会生成谁？" />
+    <meta property="og:description" content="按真实统计随机出生一次，走完一生。和朋友比比：同一个出身，谁活得更好？" />
+    <meta property="og:url" content="https://xfrongchuang.com/life/" />
+    <meta property="og:image" content="https://xfrongchuang.com/life/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="icon" type="image/svg+xml" href="./icon.svg" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <style>
+      /* 数据加载前的占位，避免白屏 */
+      #boot { position: fixed; inset: 0; display: grid; place-items: center; background: #F4F1EA; color: #C8761E; font: 600 15px/1.4 -apple-system, "PingFang SC", sans-serif; }
+      #boot i { display: block; width: 44px; height: 44px; margin: 0 auto 12px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #FFF2C4, #E79A45); animation: bootp 1.2s ease-in-out infinite; }
+      @keyframes bootp { 50% { transform: scale(.82); opacity: .7 } }
+      @media (prefers-color-scheme: dark) { #boot { background: #111215; } }
+    </style>
+    <script type="module" crossorigin src="/life/assets/index-wULxdrpu.js"></script>
+    <link rel="stylesheet" crossorigin href="/life/assets/index-D0-1fkp9.css">
+  </head>
+  <body>
+    <div id="boot"><div><i></i>生而为谁</div></div>
+    <div id="root"></div>
+    <noscript>需要开启 JavaScript 才能出生。</noscript>
+  </body>
+</html>

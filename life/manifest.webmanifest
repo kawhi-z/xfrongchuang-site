@@ -1,0 +1,14 @@
+{
+  "name": "生而为谁",
+  "short_name": "生而为谁",
+  "description": "按真实统计随机出生一次，走完一生。",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#F4F1EA",
+  "theme_color": "#C8761E",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" },
+    { "src": "apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}

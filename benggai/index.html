@@ -141,6 +141,30 @@ input:focus, textarea:focus { border-color: var(--accent); }
 .mem .w { color: var(--muted); font-size: 13px; margin-top: 4px; }
 .toast { position: fixed; left: 50%; bottom: 90px; transform: translateX(-50%); background: #2b241e; border: 1px solid var(--line); padding: 10px 16px; border-radius: 999px; font-size: 13px; z-index: 30; }
 @media (min-width: 600px) { #app { border-left: 1px solid var(--line); border-right: 1px solid var(--line); } }
+
+/* 章节 */
+.chap { padding: 6px 0 18px; transition: opacity .6s ease; }
+.chap.past { opacity: .38; }
+.chead { font-size: 12px; letter-spacing: .14em; color: var(--accent); margin: 10px 0 10px; display: flex; justify-content: space-between; }
+.chead span { color: var(--dim); letter-spacing: 0; }
+.chap .line { font-family: var(--serif); font-size: 17px; line-height: 1.9; margin: 2px 0 6px; opacity: 0; animation: rowIn .7s ease forwards; }
+.chap .line.muted { color: var(--muted); font-size: 15px; }
+.chap .line.result { color: var(--accent); }
+.chap .line.alt { border-left: 2px solid var(--line); padding-left: 12px; color: #cfc4b4; font-size: 16px; }
+.chap .line.alt b { color: var(--accent); font-weight: 500; }
+.chap.recap .chead { color: var(--muted); }
+.bridge { font-size: 13px; color: var(--dim); margin: 14px 0 4px; padding-left: 10px; border-left: 1px dashed var(--line); line-height: 1.6; }
+.bridge span { display: block; font-size: 11px; color: #5a4f45; }
+.opts { opacity: 0; animation: rowIn .6s ease forwards; margin-top: 6px; }
+.opt.picked { border-color: var(--accent); }
+.opt.dim { opacity: .35; }
+.opt:disabled { cursor: default; }
+.letter { font-family: var(--serif); background: #e9dfcd; color: #2a2119; border-radius: 4px; padding: 18px 18px 14px; margin: 12px 0; line-height: 1.9; opacity: 0; animation: rowIn 1s ease forwards; box-shadow: 0 6px 24px rgba(0,0,0,.4); transform: rotate(-0.6deg); }
+.letter p { margin: 0 0 6px; } .letter .from { text-align: right; margin-top: 8px; }
+.next { width: 100%; }
+.ctrl-row #pocketView { display: none; }
+.fam.friend { border-color: #4b4036; }
+#endCard .trio { color: #d8ccbb; }
 </style>
 </head>
 <body>
@@ -191,8 +215,7 @@ input:focus, textarea:focus { border-color: var(--accent); }
     <footer id="ctrl">
       <div id="grid"></div>
       <div class="ctrl-row">
-        <button id="btnPause" class="ghost">暂停</button>
-        <button id="btnSpeed" class="ghost">1×</button>
+        <button id="btnNext" class="primary next hidden">继续</button>
         <span id="pocketView" class="muted small"></span>
       </div>
     </footer>
@@ -271,8 +294,8 @@ input:focus, textarea:focus { border-color: var(--accent); }
   const RISK_CAP = 0.3;
   const INJURY_RATIO = 2.5;
   const TRAVEL = { city: 0.006, abroad: 0.012, abroad2: 0.03 };
-  const CARE_AGES = [4, 6, 8, 10, 12, 14, 16, 19, 23, 28, 35, 45, 55];
-  const ASK_AGES = [5, 15, 30, 50, 70];
+  const CARE_AGES = [11, 17, 26];
+  const ASK_AGES = [];
   const MAX_BIG = 6;         // 每局大选择上限（征兵、房子、前线后方不计入）
 
   let D = null;
@@ -434,6 +457,8 @@ input:focus, textarea:focus { border-color: var(--accent); }
       fam.push({ id: 'sib' + i, rel: 'sib', sex: rnd(seed, 'sibsex', i) < 0.5 ? 'f' : 'm',
         by: older ? by - gap : by + gap, unborn: !older });
     }
+    // 贯穿一生的妹妹：比你小 2–4 岁
+    fam.push({ id: 'sis', rel: 'sib', sex: 'f', by: by + 2 + Math.floor(rnd(seed, 'sisgap') * 3), unborn: true });
     fam.forEach(p => { p.alive = !p.unborn; p.loc = 'home'; p.away = null; });
     const gma = fam.find(p => p.id === 'gma');
     if (by - gma.by > 80) gma.alive = false;
@@ -455,6 +480,8 @@ input:focus, textarea:focus { border-color: var(--accent); }
       warYears: 0, inZoneYears: 0, firstWar: null, lastWarYear: null, everWar: false,
       displacedEver: false, served: false, trauma: false, leg: false, profiteer: false,
       hunger: 0, deathYear: null, cause: null, log: [], suppress: false, line: line || 'war',
+      // 同一条街长大的朋友：和你同性别、差不多大，不算家人
+      friend: { id: 'friend', sex, by: by - Math.floor(rnd(seed, 'fage') * 2), alive: true, loc: 'home', away: null },
     };
     Object.defineProperty(st, 'c', { value: c, enumerable: false, writable: true });
     st.eduTarget = eduTarget(st, st.line);
@@ -583,12 +610,19 @@ input:focus, textarea:focus { border-color: var(--accent); }
       opts: () => ['front', 'rear'], fx: { front: { money: 10 }, rear: {} },
       apply(st, opt) { st.army.post = opt; st.log.push({ y: st.year, t: 'post', opt }); },
     },
-    school: {
-      recap: false,
-      when: (st, x) => x.war && (x.zone === 'in' || x.zone === 'near') && homeLoc(st) && st.age >= 7 && st.age <= 17
-        && st.school.years < st.eduTarget && rnd(st.seed, 'closure', st.year) < closureP(x),
-      opts: () => ['far', 'help'], fx: { far: { mood: 3 }, help: { money: 5, mood: -5 } },
-      apply(st, opt) { st.school.mode = opt; if (opt === 'far') { st.riskMul = 1.3; st.riskMulUntil = st.year + 4; } st.log.push({ y: st.year, t: 'schoolChoice', opt }); },
+    sisSchool: {
+      recap: true,
+      when: (st, x) => x.war && (x.zone === 'in' || x.zone === 'near') && homeLoc(st) && st.age >= 8 && !!sisAt(st, 9, 15)
+        && rnd(st.seed, 'closure', st.year) < closureP(x),
+      opts: st => st.stats.money >= 15 ? ['sendSis', 'keepSis'] : null,
+      fx: { sendSis: { money: -25 }, keepSis: { money: 5 } },
+      apply(st, opt) {
+        const p = sisAt(st, 9, 15);
+        st.sisSchool = opt;
+        if (opt === 'sendSis') { p.away = 'school'; p.loc = 'city'; }
+        else p.schoolLost = true;
+        st.log.push({ y: st.year, t: 'sisSchoolDone', opt });
+      },
     },
     neighbor: {
       recap: true,
@@ -699,6 +733,7 @@ input:focus, textarea:focus { border-color: var(--accent); }
       apply(st, opt) {
         if (opt === 'keepStudy') st.eduTarget = Math.max(st.eduTarget, st.stats.money >= 45 ? 16 : 12);
         else st.eduTarget = st.school.years;
+        st.eduMax = Math.max(st.eduMax || 0, st.eduTarget);
         st.log.push({ y: st.year, t: 'study', opt });
       },
     },
@@ -772,12 +807,15 @@ input:focus, textarea:focus { border-color: var(--accent); }
     },
   };
   const SC_FIRST = ['draft', 'house', 'post'];
+  const PEACE_SC = ['study', 'migrate', 'workAbroad'];
   const SC_REST = Object.keys(SC).filter(k => SC_FIRST.indexOf(k) < 0);
 
+  function sisOf(st) { return st.fam.find(p => p.id === 'sis'); }
+  function sisAt(st, a0, a1) { const p = sisOf(st); return p && p.alive && !p.away && p.loc === st.loc && st.year - p.by >= a0 && st.year - p.by <= a1 ? p : null; }
   function homeLoc(st) { return st.loc === 'home' || st.loc === 'moved'; }
   function household(st) { return [st].concat(st.fam.filter(p => p.alive && !p.away && p.loc === st.loc)); }
-  function teenKid(st) { return st.fam.find(p => p.rel === 'kid' && p.alive && !p.away && st.year - p.by >= 12 && st.year - p.by <= 18); }
-  function teenDaughter(st) { return st.fam.find(p => p.rel === 'kid' && p.sex === 'f' && p.alive && !p.away && st.year - p.by >= 15 && st.year - p.by <= 17); }
+  function teenKid(st) { return st.fam.find(p => p.rel === 'kid' && p.alive && !p.away && p.loc === st.loc && st.year - p.by >= 12 && st.year - p.by <= 18); }
+  function teenDaughter(st) { return st.fam.find(p => p.rel === 'kid' && p.sex === 'f' && p.alive && !p.away && p.loc === st.loc && st.year - p.by >= 15 && st.year - p.by <= 17); }
   function closureP(x) { return Math.min(0.85, 0.3 + x.r * 450); }
   function sickPatient(st) {
     const al = st.fam.filter(p => p.alive && !p.away && p.loc === st.loc);
@@ -787,7 +825,8 @@ input:focus, textarea:focus { border-color: var(--accent); }
     p.army = { start: y, until: y + 2 + Math.floor(rnd(st.seed, 'armydur', p === st ? 'self' : p.id) * 5),
       post: p === st ? 'rear' : (rnd(st.seed, 'post', p.id) < 0.5 ? 'front' : 'rear'), done: false };
     if (p === st) { st.served = true; st.army.comrade = true; st.log.push({ y, t: 'armyStart' }); }
-    else { p.away = 'army'; st.log.push({ y, t: 'famDrafted', who: p.id }); }
+    else { p.away = 'army'; st.log.push({ y, t: 'famDrafted', who: p.id }); if (p.id === 'dad') giveRadio(st); }
+    if (p === st && st.friend && st.friend.alive && st.friend.army && !st.friend.army.done) st.army.withFriend = true;
   }
   function flee(st, loc, alone, quiet) {
     const y = st.year, old = st.loc;
@@ -829,6 +868,8 @@ input:focus, textarea:focus { border-color: var(--accent); }
       const sc = SC[id];
       if (st.done[id]) continue;
       if (!sc.always && st.big >= MAX_BIG) continue;
+      // 战争刚来的那一年，先讲「战争来了」，战时的选择从下一年开始
+      if (x.war && !st.everWar && PEACE_SC.indexOf(id) < 0) continue;
       if (!sc.when(st, x)) continue;
       if (id === 'draft') {
         const t = draftTarget(st);
@@ -885,17 +926,22 @@ input:focus, textarea:focus { border-color: var(--accent); }
     st.carePicks.push({ age: st.age, tag });
   }
   function itemThisYear(st) {
-    const a = st.age, al = id => st.fam.some(p => p.id === id && p.alive);
-    const sib = st.fam.find(p => p.rel === 'sib' && p.alive && st.year - p.by >= 5);
-    if (a === 6) return 'shoes';
-    if (a === 9) return sib ? 'drawing:' + sib.id : 'marbles';
-    if (a === 11) return 'photo';
-    if (a === 13) return st.school.years >= 6 ? 'certificate' : 'knife';
-    if (a === 15) return al('dad') ? 'radio' : (al('mom') ? 'scarf' : 'letter');
+    const a = st.age;
+    const sis = st.fam.find(p => p.id === 'sis');
+    if (sis && sis.alive && st.year - sis.by === 5) return 'drawing:sis';
+    if (a === 10 && st.friend && st.friend.alive && !st.friend.abroad) { st.friend.loc = st.loc === 'moved' ? 'home' : st.loc; st.friend.met = st.year; return 'football'; }
+    if (a === 12) return 'photo';
     if (st.justMarried) return 'ring';
     const k = st.fam.find(p => p.rel === 'kid' && p.alive && st.year - p.by === 6);
     if (k) return 'tooth:' + k.id;
     return null;
+  }
+  // 爸爸走了（参军或去世）时，收音机自动到你手里
+  function giveRadio(st) {
+    if (st.gotRadio || st.line === 'peace') return;
+    st.gotRadio = st.year;
+    if (st.pocket.length < 5) st.pocket.push('radio');
+    else st.pocket[st.pocket.length - 1] = 'radio';
   }
   // drop：口袋满时要放下的那一格；-1 表示放下新东西
   function addItem(st, item, drop) {
@@ -920,6 +966,7 @@ input:focus, textarea:focus { border-color: var(--accent); }
     } else {
       p.alive = false; p.diedYear = st.year; p.cause = cause;
       st.log.push({ y: st.year, t: 'famDeath', who: p.id, cause, away: p.away });
+      if (p.id === 'dad') giveRadio(st);
       bump(st, EVFX.famDeath);
     }
   }
@@ -1046,7 +1093,7 @@ input:focus, textarea:focus { border-color: var(--accent); }
         A.powUntil = y + 1 + Math.floor(rnd(seed, 'powlen', y) * 3); ev(st, { y, t: 'pow' });
       }
       if (A.powUntil === y) st.log.push({ y, t: 'powBack' });
-      if (A.comrade && !A.comradeDied && y > A.start) {
+      if (A.comrade && !A.withFriend && !A.comradeDied && y > A.start) {
         const cr = Math.min(RISK_CAP, r * 6 * POST_K[A.post || 'rear']);
         if (rnd(seed, 'comrade', y) < cr) { A.comradeDied = y; ev(st, { y, t: 'comradeDeath' }); }
       }
@@ -1058,7 +1105,7 @@ input:focus, textarea:focus { border-color: var(--accent); }
       }
     }
     // 躲征兵
-    if (st.hiding >= y && !st.army && war && rnd(seed, 'search', y) < 0.15) {
+    if (st.hiding >= y && !st.army && war && homeLoc(st) && rnd(seed, 'search', y) < 0.15) {
       ev(st, { y, t: 'caught' }); startArmy(st, st, y); st.hiding = 0;
     }
     // 帮人藏
@@ -1080,7 +1127,7 @@ input:focus, textarea:focus { border-color: var(--accent); }
     // 家人：被搜到、参军来信、回来
     st.fam.forEach(p => {
       if (!p.alive) return;
-      if (p.hiding >= y && war && rnd(seed, 'search', p.id, y) < 0.15) { p.hiding = 0; st.log.push({ y, t: 'famCaught', who: p.id }); startArmy(st, p, y); }
+      if (p.hiding >= y && war && p.loc === 'home' && rnd(seed, 'search', p.id, y) < 0.15) { p.hiding = 0; st.log.push({ y, t: 'famCaught', who: p.id }); startArmy(st, p, y); }
       if (p.army && !p.army.done) {
         if (y > p.army.start && rnd(seed, 'letter', p.id, y) < 0.4) st.log.push({ y, t: 'letter', who: p.id });
         if (y >= p.army.until || (!war && !isWar(st, y - 1))) {
@@ -1090,12 +1137,47 @@ input:focus, textarea:focus { border-color: var(--accent); }
       }
     });
 
+    // 妹妹
+    const sis = sisOf(st);
+    if (sis && sis.alive && !peaceLine) {
+      const sa = y - sis.by;
+      if (sis.away === 'school' && sa >= 18) { sis.away = null; sis.loc = st.loc === 'abroad2' ? 'home' : st.loc; sis.educated = true; st.log.push({ y, t: 'sisBack' }); }
+      if (war && !sis.away && sis.loc === st.loc && sa >= 16 && sa <= 17 && st.stats.money < 25 && rnd(seed, 'sismar', y) < 0.25) {
+        sis.away = 'married'; st.log.push({ y, t: 'sisMarried' });
+      }
+      if (war && !sis.nurse && sis.away !== 'married' && sis.away !== 'abroad' && sa >= 16 && sa <= 25 && !sis.schoolLost
+          && (x.zone === 'in' || x.zone === 'near') && rnd(seed, 'sisnurse', y) < 0.5) {
+        sis.nurse = y; st.log.push({ y, t: 'sisNurse' });
+      }
+    }
+    // 朋友
+    const f = st.friend;
+    if (f && f.alive && !peaceLine) {
+      const fa = y - f.by;
+      if (f.met && war && !f.army && !f.abroad && f.sex === 'm' && fa >= 16 && fa <= 40 && rnd(seed, 'fdraft', y) < 0.3) {
+        f.army = { start: y, until: y + 2 + Math.floor(rnd(seed, 'fdur') * 4), post: rnd(seed, 'fpost') < 0.6 ? 'front' : 'rear', done: false };
+        st.log.push({ y, t: 'friendDrafted' });
+        if (inArmy(st, y)) st.army.withFriend = true;
+      } else if (f.met && y - f.met >= 3 && war && !f.army && !f.abroad && rnd(seed, 'fabroad', y) < 0.03) {
+        f.abroad = y; f.loc = 'abroad'; st.log.push({ y, t: 'friendLeft' });
+      }
+      if (f.army && !f.army.done && (y >= f.army.until || (!war && !isWar(st, y - 1)))) { f.army.done = true; st.log.push({ y, t: 'friendBack' }); }
+      const v = violentRisk(st, f, y), hb = Math.max(0, hazard(fa, f.sex, c, y, 'war') - r);
+      const u = rnd(seed, 'death', 'friend', y);
+      if (u < v + hb) {
+        f.alive = false; f.diedYear = y; f.cause = u < v ? 'violence' : fa < 5 ? 'child' : fa >= 65 ? 'old' : 'illness';
+        st.log.push({ y, t: 'friendDeath', cause: f.cause, army: inArmy(f, y) });
+        if (st.army && !st.army.done && st.army.withFriend && !st.army.comradeDied) st.army.comradeDied = y;
+      }
+    }
+
     // 生死
     const hf = clamp(1 + (60 - st.stats.health) / 100, 0.7, 1.5);
     st.fam.filter(p => p.alive).concat([st]).forEach(p => {
       const id = p === st ? 'self' : p.id;
       const age = y - p.by;
       if (age < 0 || !p.alive) return;
+      if (p.id === 'mom' && st.fam.some(q => q.id === 'sis' && q.unborn)) return;
       const hp = hazard(age, p.sex, c, y, 'peace');
       let hb = hp;
       if (!peaceLine) {
@@ -1161,7 +1243,7 @@ input:focus, textarea:focus { border-color: var(--accent); }
   function peaceLife(st) {
     const p = newLife(st.seed, st.by, 'peace');
     p.care = JSON.parse(JSON.stringify(st.care));
-    p.eduTarget = eduTarget(p, 'peace');
+    p.eduTarget = Math.max(eduTarget(p, 'peace'), st.eduMax || 0);
     p.suppress = true;
     while (p.alive) finishYear(p);
     return p;
@@ -1187,6 +1269,8 @@ input:focus, textarea:focus { border-color: var(--accent); }
       if (a.alive && !q.alive && q.diedYear >= startYear) out.push({ k: 'famDies', who: q.id, cause: q.cause });
       if (!a.alive && q.alive && a.diedYear >= startYear) out.push({ k: 'famLives', who: q.id });
     });
+    if (A.friend && B.friend && A.friend.alive !== B.friend.alive && (A.friend.diedYear || B.friend.diedYear || 0) >= startYear)
+      out.push({ k: B.friend.alive ? 'friendLives' : 'friendDies' });
     if (B.injured > A.injured) out.push({ k: 'selfInjured' });
     if (B.injured < A.injured) out.push({ k: 'noInjury' });
     if (B.leg && !A.leg) out.push({ k: 'leg' });
@@ -1208,7 +1292,7 @@ input:focus, textarea:focus { border-color: var(--accent); }
     if (B.married && !A.married) out.push({ k: 'married' });
     const kd = B.fam.filter(p => p.rel === 'kid').length - A.fam.filter(p => p.rel === 'kid').length;
     if (kd > 0) out.push({ k: 'moreKids', n: kd });
-    const rank = { selfDies: 0, selfLives: 0, selfLonger: 0, selfShorter: 0, famDies: 1, famLives: 1, neverServed: 2, leg: 2,
+    const rank = { selfDies: 0, selfLives: 0, selfLonger: 0, selfShorter: 0, famDies: 1, famLives: 1, friendDies: 1, friendLives: 1, neverServed: 2, leg: 2,
       selfInjured: 2, noInjury: 3, houseHit: 2, prison: 2, lessSchool: 4, moreSchool: 4, moreHunger: 4, lessHunger: 4,
       richer: 5, poorer: 5, moreFriends: 6, lonelier: 6, married: 6, moreKids: 6 };
     out.sort((a, b) => rank[a.k] - rank[b.k]);
@@ -1239,7 +1323,7 @@ input:focus, textarea:focus { border-color: var(--accent); }
   }
 
   return {
-    init, rnd, newLife, attach, clone, prompts, applyChoice, applyCare, addItem, keepOnly,
+    init, rnd, newLife, sisOf, inArmy, effZone, attach, clone, prompts, applyChoice, applyCare, addItem, keepOnly,
     finishYear, runBranch, diff, ending, peaceLife, warRate, isWar, zoneOf, actual, peace,
     hazard, lifeExp, solveB, candidates, SC, NOW, WAR, INTENSE, ZONE_K, POST_K, RISK_CAP, TRAVEL, CARE_AGES,
   };
@@ -1811,32 +1895,32 @@ input:focus, textarea:focus { border-color: var(--accent); }
   for (const g in GROUP) GROUP[g].split(' ').forEach(i => { ISO_GROUP[i] = g; });
   const NAMES = {
     arab: ['艾哈迈德 穆罕默德 优素福 奥马尔 哈立德 萨米尔 卡里姆 阿里 易卜拉欣 哈桑', '法蒂玛 阿雅 莱拉 努尔 萨拉 玛丽亚姆 扎伊纳卜 哈娜 雅斯敏 鲁卡娅'],
-    israel: ['约纳坦 阿维 诺姆 伊泰 埃坦 阿萨夫', '诺娅 塔玛 米卡 希拉 雅埃尔 莉亚'],
+    israel: ['约纳坦 阿维 诺姆 伊泰 埃坦 阿萨夫 奥姆里 盖伊 罗伊 伊多', '诺娅 塔玛 米卡 希拉 雅埃尔 莉亚 奥丽 玛雅 希拉 谢尔'],
     afghan: ['法里德 纳西尔 瓦希德 贾米尔 拉希姆 阿卜杜拉 沙基尔 哈米德 努尔丁 扎希尔', '帕丽莎 马丽娜 古尔巴哈尔 纳希德 扎赫拉 法丽达 沙基拉 罗娅 苏赫拉 哈蒂杰'],
     persian: ['礼萨 阿米尔 梅迪 侯赛因 达尔尤什 卡维 纳维德 巴巴克', '玛赫莎 帕丽 莎丽 内达 法尔扎内 玛丽亚姆 西敏 罗珊'],
     turkic: ['穆斯塔法 埃姆雷 阿尔丹 奥尔罕 布拉克 杰姆 卡迪尔 鲁斯塔姆', '艾谢 泽伊内普 埃丽芙 古尔娜拉 莱拉 迪拉拉 阿伊古尔 梅丽克'],
-    caucasus: ['吉奥尔吉 达维特 阿尔缅 列文 戈尔 尼科', '尼诺 阿努什 塔马尔 莉阿娜 玛丽亚姆 卢西内'],
+    caucasus: ['吉奥尔吉 达维特 阿尔缅 列文 戈尔 尼科 瓦赫唐 阿拉姆 绍塔 季格兰', '尼诺 阿努什 塔马尔 莉阿娜 玛丽亚姆 卢西内 娜娜 埃特里 阿尔皮内 凯蒂'],
     slavic: ['安德烈 德米特罗 伊万 谢尔盖 米哈伊洛 帕夫洛 弗拉基米尔 尼古拉 博格丹 阿列克谢', '奥莲娜 娜塔莉娅 玛丽娅 伊琳娜 卡捷琳娜 索菲娅 达丽娅 安娜 尤利娅 塔季扬娜'],
-    alb: ['阿尔本 多利安 贝西姆 恩维尔 阿迪', '阿尔塔 布莉恩达 莉丽 瓦洛拉 多娜'],
+    alb: ['阿尔本 多利安 贝西姆 恩维尔 阿迪 弗拉通 里努斯 阿格隆 贝基姆 德里顿', '阿尔塔 布莉恩达 莉丽 瓦洛拉 多娜 埃丽莎 米拉 维约萨 阿尔布丽 弗洛拉'],
     horn: ['阿贝贝 特沃德罗斯 海尔 约哈内斯 达维特 梅科宁 基达内 特斯法耶', '梅塞雷特 蒂吉斯特 赫鲁特 赛拉 阿尔马兹 贝蕾赫 莉娅 哈娜'],
     somali: ['阿卜迪 穆罕默德 法拉赫 哈桑 奥斯曼 尤素福 阿里 伊斯梅尔', '法杜玛 哈莉玛 阿米娜 萨赫拉 哈瓦 菲尔多萨 卡迪佳 伊夫拉'],
     lakes: ['让 埃里克 帕特里克 奥利维耶 约瑟夫 伊诺桑 克洛德 蒂埃里', '克莱芒蒂娜 玛丽 伊马居莱 尚塔尔 埃斯佩朗斯 格蕾丝 吉塞勒 弗洛朗斯'],
     uga: ['奥凯洛 穆卡萨 奥蒙多 塞瓦尼 姆维西加 基伊扎 奥乔拉 卡托', '纳卡托 阿琴 纳鲁伯加 阿蒂姆 基森盖 阿波 纳穆塔 阿约'],
-    ssd: ['邓 加朗 马约克 阿库奥尔 马比奥尔 卢奥尔', '阿约克 尼亚邦 阿琼 阿伊恩 尼亚德 阿查尔'],
+    ssd: ['邓 加朗 马约克 阿库奥尔 马比奥尔 卢奥尔 马戈克 阿约姆 库奥尔 马朱克', '阿约克 尼亚邦 阿琼 阿伊恩 尼亚德 阿查尔 尼亚科 阿库特 尼亚琼 阿丁'],
     west: ['埃梅卡 楚克伍 奥卢 克瓦梅 科菲 塞孔 阿德巴约 恩纳姆迪 易卜拉欣 穆萨', '恩戈齐 阿达 芬米 阿玛 齐奥玛 宾塔 雅娜 伊菲 阿伊沙 阿比盖尔'],
     sahel: ['阿马杜 布巴卡尔 穆萨 易卜拉欣 苏莱曼 马马杜 奥马尔 伊德里斯', '阿伊莎 法图玛塔 玛丽亚姆 哈迪贾 阿米娜塔 赛塔 拉玛图 艾萨图'],
-    south: ['塔博 西佐 坦多 西邦加 姆福 塔纳卡', '诺姆萨 坦迪 莱拉托 鲁达 塔里莎 诺库图拉'],
+    south: ['塔博 西佐 坦多 西邦加 姆福 塔纳卡 卢索 姆兰多 布西 法拉伊', '诺姆萨 坦迪 莱拉托 鲁达 塔里莎 诺库图拉 齐波 坦卡 鲁梅 法莱'],
     luso: ['若昂 曼努埃尔 安东尼奥 若泽 保罗 马里奥 卡洛斯 多明戈斯', '玛丽亚 安娜 若阿娜 特雷莎 伊莎贝尔 卢西娅 罗莎 艾达'],
     samuslim: ['伊姆兰 乌斯曼 法伊萨尔 拉希德 卡西姆 阿西夫 塔里克 拉赫曼 阿亚恩 阿里', '阿伊莎 法蒂玛 赛玛 玛丽亚姆 拉贝娅 纳迪娅 萨尔玛 齐纳特 鲁比娜 塔丝琳'],
     sahindu: ['拉姆 苏雷什 普拉卡什 阿琼 迪尼什 卡马尔 苏尼尔 拉维', '西塔 普丽娅 拉克希米 安贾莉 迪皮卡 卡维塔 尼玛拉 苏曼'],
-    vn: ['阮文明 陈文雄 黎文山 范文德 武文平 黄文勇', '阮氏兰 陈氏梅 黎氏花 范氏秋 武氏雪 黄氏玉'],
-    khmer: ['索帕 维沙尔 达拉 皮塞 宋邦 萨洛', '索菲 斯雷莫 达维 瑞丝 玛丽娜 斯雷涅'],
-    mm: ['昂敏 觉梭 吴丁 敏昂 佐温 丁貌', '素素 玛玛 钦钦 敏敏 苏苏 南达'],
-    malay: ['布迪 阿古斯 苏尔约 哈迪 里扎尔 安迪', '斯里 德薇 努尔 拉蒂 茵丹 普特丽'],
-    korea: ['金哲洙 朴永浩 李成民 崔光日 郑大成 姜明植', '金英姬 朴顺子 李明淑 崔贞爱 郑美京 姜春花'],
+    vn: ['阮文明 陈文雄 黎文山 范文德 武文平 黄文勇 吴文海 邓文光 裴文强 杜文胜', '阮氏兰 陈氏梅 黎氏花 范氏秋 武氏雪 黄氏玉 吴氏凤 邓氏草 裴氏莲 杜氏香'],
+    khmer: ['索帕 维沙尔 达拉 皮塞 宋邦 萨洛 布拉索 维塔 索宾 戈萨尔', '索菲 斯雷莫 达维 瑞丝 玛丽娜 斯雷涅 莉达 索卡 卡涅卡 波法'],
+    mm: ['昂敏 觉梭 吴丁 敏昂 佐温 丁貌 貌貌 吞吞 觉温 耶敏', '素素 玛玛 钦钦 敏敏 苏苏 南达 埃埃 丁丁 桑桑 茵茵'],
+    malay: ['布迪 阿古斯 苏尔约 哈迪 里扎尔 安迪 巴尤 达尼 约科 伊万', '斯里 德薇 努尔 拉蒂 茵丹 普特丽 阿尤 丽娜 维达 玛雅'],
+    korea: ['金哲洙 朴永浩 李成民 崔光日 郑大成 姜明植 尹东赫 韩相浩 吴在元 林正植', '金英姬 朴顺子 李明淑 崔贞爱 郑美京 姜春花 尹玉顺 韩恩珠 吴善英 林惠淑'],
     latam: ['何塞 胡安 卡洛斯 路易斯 米格尔 豪尔赫 曼努埃尔 拉斐尔 迭戈 安德烈斯', '玛丽亚 瓜达卢佩 罗莎 卡门 安娜 露西娅 索菲娅 伊莎贝尔 埃斯佩兰萨 帕特里西娅'],
-    carib: ['德文 马库斯 安德烈 肖恩 特雷沃', '奇娜 凯莎 塔妮娅 雪莉 杰德'],
-    haiti: ['让-巴蒂斯特 皮埃尔 雅克 埃德蒙 卢克', '玛丽-若瑟 罗丝 让娜 克莱尔 米雷耶'],
+    carib: ['德文 马库斯 安德烈 肖恩 特雷沃 德韦恩 卡尔 罗德尼 韦斯利 加里', '奇娜 凯莎 塔妮娅 雪莉 杰德 娜塔莎 索尼娅 卡米尔 伊冯 黛西'],
+    haiti: ['让-巴蒂斯特 皮埃尔 雅克 埃德蒙 卢克 若瑟 弗朗索瓦 米歇尔 雷内 安托万', '玛丽-若瑟 罗丝 让娜 克莱尔 米雷耶 娜塔莉 苏珊 伊薇特 吉赛尔 玛蒂娜'],
   };
   for (const g in NAMES) NAMES[g] = NAMES[g].map(s => s.split(' '));
 
@@ -1870,7 +1954,10 @@ input:focus, textarea:focus { border-color: var(--accent); }
     const pool = NAMES[ISO_GROUP[st.iso] || 'latam'][sex === 'f' ? 1 : 0];
     let i = Math.floor(R(st.seed, 'nm', id) * pool.length);
     for (let t = 0; t < pool.length && skip.indexOf(pool[i]) >= 0; t++) i = (i + 1) % pool.length;
-    return skip.indexOf(pool[i]) < 0 ? pool[i] : '小' + pool[i];   // 名字池用完时（大家庭），用「小某某」区分
+    if (skip.indexOf(pool[i]) < 0) return pool[i];
+    const alt = NAMES.latam[sex === 'f' ? 1 : 0].concat(NAMES.west[sex === 'f' ? 1 : 0]);   // 名字池用完时（大家庭），从别的池子补
+    for (let t = 0; t < alt.length; t++) { const n = alt[(i + t) % alt.length]; if (skip.indexOf(n) < 0) return n; }
+    return pool[i];
   }
   function personName(st, id, sex) {
     const taken = [rawName(st, 'self', st.sex, [])];
@@ -1910,7 +1997,7 @@ input:focus, textarea:focus { border-color: var(--accent); }
     for (let i = 0; i < 12; i++) { const n = personName(st, key + (i || ''), sex); if (taken.indexOf(n) < 0) return n; }
     return personName(st, key, sex);
   }
-  const friendName = st => otherName(st, 'friend', R(st.seed, 'friendsex') < 0.5 ? 'f' : 'm');
+  const friendName = st => personName(st, 'friend', st.sex);
   const loverName = st => otherName(st, 'lover', st.sex === 'f' ? 'm' : 'f');
   const CN_NUM = ['零', '一', '两', '三', '四', '五', '六', '七', '八', '九', '十'];
   const yrs = n => '这' + (n <= 10 ? CN_NUM[n] : n) + '年';
@@ -1941,9 +2028,9 @@ input:focus, textarea:focus { border-color: var(--accent); }
   function itemLabel(st, item) {
     const [k, id] = item.split(':');
     return {
-      shoes: '第一双球鞋', drawing: (id ? who(st, id) : '') + '画的一张画', marbles: '一袋玻璃弹珠', photo: '一张全家福',
+      shoes: '第一双球鞋', drawing: (id === 'sis' ? '妹妹' + personName(st, 'sis', 'f') : id ? who(st, id) : '') + '画的那张画', marbles: '一袋玻璃弹珠', photo: '一张全家福',
       certificate: '小学毕业证', knife: '爸爸给的小刀', radio: '爸爸的收音机', scarf: '妈妈的围巾', letter: '一封没寄出去的信',
-      ring: '一枚戒指', tooth: (id ? who(st, id, true) : '孩子') + '的第一颗乳牙',
+      ring: '一枚戒指', football: '那个瘪了的足球', tooth: (id ? who(st, id, true) : '孩子') + '的第一颗乳牙',
     }[k] || k;
   }
   const STAT_NAME = { health: '健康', money: '钱', mood: '心情', social: '人际' };
@@ -1974,7 +2061,7 @@ input:focus, textarea:focus { border-color: var(--accent); }
       case 'grain': return { q: '有人出三倍的价钱收你家的粮食。你知道是给谁吃的。', o: { sell: '卖', refuse: '不卖' } };
       case 'sick': return { q: w + '病倒了。镇上的诊所关了门。', o: { toCity: '冒险送进城里', care: '留在家里照顾' } };
       case 'relAbroad': return { q: '在国外的表哥打来电话：「过来吧，这边有活干。」', o: { goAbroad: '带上家人走', stayHome: '留下' } };
-      case 'refugees': return { q: '从' + reg + '逃来的人挤满了车站。有一家人在你家门口坐了一整天。', o: { host: '让他们住进来', noHost: '关上门' } };
+      case 'refugees': return { q: '从打仗的地方逃来的人挤满了车站。有一家人在你家门口坐了一整天。', o: { host: '让他们住进来', noHost: '关上门' } };
       case 'hoard': return { q: '仓库里还有两百袋面粉。外面的面包已经涨了五倍。', o: { hoardSell: '囤起来，慢慢高价卖', fair: '按原价卖', give: '分给邻居' } };
       case 'smuggleGoods': return { q: '有人找上门：帮着把「货」运过检查站，一趟顶一年的收入。', o: { run: '干', noRun: '不干' } };
       case 'buyHouse': return { q: '隔壁一家要逃难，急着卖房，价格只有原来的一成。', o: { buy: '买下来', noBuy: '不买', keepFor: '替他们看着房子' } };
@@ -2017,7 +2104,7 @@ input:focus, textarea:focus { border-color: var(--accent); }
       earlyMarry: { agree: w + '嫁了过去。', refuseM: '你拒绝了提亲。' },
       desert: { deserting: '那天夜里，你跑了。', stayArmy: '你没有跑。' },
       smuggler: { goFar: '你花光了所有的钱，上了路。', stayCamp: '你留在了营地。' },
-      ret: { back: '你们回到了' + region(st) + '。', remain: '你们留了下来。这里成了新的家。' },
+      ret: { back: (st.draft && st.draft.opt === 'leave' ? '你' : '你们') + '回到了' + region(st) + '。', remain: (st.draft && st.draft.opt === 'leave' ? '你' : '你们') + '留了下来。这里成了新的家。' },
       enemy: { approach: '你走过去，站在他面前。你们谁也没有说话。', avoid: '你绕开了。那天你没买菜。', tell: '你把他的名字告诉了别人。' },
       comrade: { visit: '你坐了一天的车，去了' + comradeName(st) + '家。他的母亲拉着你的手不放。', letter: '你写了一封信。写了很多遍。' },
       rebuild: { rebuildNow: '你们开始重新盖房子。', waitBuild: '房子的事，先放一放。' },
@@ -2255,6 +2342,8 @@ input:focus, textarea:focus { border-color: var(--accent); }
       case 'moreFriends': return '会有更多人愿意帮你';
       case 'lonelier': return '身边的人会少很多';
       case 'married': return '你会在那几年结婚';
+      case 'friendDies': return '朋友' + friendName(st) + '会没能活下来';
+      case 'friendLives': return '朋友' + friendName(st) + '会活着';
       case 'moreKids': return '家里会多' + (it.n > 1 ? it.n + '个' : '一个') + '孩子';
     }
     return '';
@@ -2280,12 +2369,13 @@ input:focus, textarea:focus { border-color: var(--accent); }
     let best = null, score = -1;
     recaps.forEach(r => r.alts.forEach(a => {
       a.diff.items.forEach(it => {
-        const s = { selfLives: 10, selfDies: 9, famLives: 8, famDies: 6, selfLonger: 7, leg: 5, neverServed: 4, houseHit: 3, moreSchool: 2 }[it.k] || 0;
+        const s = { selfLives: 10, selfDies: 9, famLives: 8, famDies: 6, friendLives: 7, friendDies: 5, selfLonger: 7, leg: 5, neverServed: 4, houseHit: 3, moreSchool: 2 }[it.k] || 0;
         if (s > score) { score = s; best = { r, a, it }; }
       });
     }));
     if (!best || score < 2) return null;
     const sc = scenarioText(st, best.r.choice);
+    if (best.r.choice.id === 'sisSchool') sc.o = { sendSis: '送她去城里读书', keepSis: '留她在家' };
     const lab = sc.o[best.a.opt] || '';
     const p = pron(st);
     const ph = diffPhrase(st, best.it, best.a.branch).replace(/你/g, p);
@@ -2353,6 +2443,555 @@ input:focus, textarea:focus { border-color: var(--accent); }
     selfName, personName, region, relLabel, who, careLabel, itemLabel, hintText, scenarioText, choiceLine,
     narrateYear, recapText, hardestLine, endingText, birthText, ASK, OCC, OCC_NOUN, STAT_NAME, pron, comradeName,
   };
+});
+</script>
+<script>/* 《本该有的一生》章节文案：把引擎里的一段人生，讲成 12–18 个章节。
+ *
+ * 一致性约定：每句话用 L(文本, 需要在场的人) 生成。refs 里的人必须「活着且在你身边」，
+ * 由 tools/consistency.js 批量检查；回忆里提到的人不进 refs。
+ */
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) module.exports = factory(require('./engine.js'), require('./text.js'));
+  else root.Story = factory(root.Engine, root.Text);
+})(typeof self !== 'undefined' ? self : this, function (E, T) {
+  'use strict';
+  const R = E.rnd;
+  const pick = (arr, r) => arr[Math.min(arr.length - 1, Math.floor(r * arr.length))];
+  const L = (t, refs, together) => ({ t, refs: refs || [], together: !!together });   // together：这句话要求两人此刻在一起
+
+  // ---------------- 人物与状态查询 ----------------
+  const fam = (st, id) => st.fam.find(p => p.id === id);
+  const sis = st => fam(st, 'sis');
+  const sisName = st => T.personName(st, 'sis', 'f');
+  const friendName = st => T.personName(st, 'friend', st.sex);
+  const alive = (st, id) => { const p = id === 'friend' ? st.friend : fam(st, id); return !!(p && p.alive && !p.unborn); };
+  // 「在身边」：活着、没在外面、和你在同一个地方
+  const here = (st, id) => {
+    const p = id === 'friend' ? st.friend : fam(st, id);
+    if (!p || !p.alive || p.unborn) return false;
+    if (id === 'friend') return !p.abroad && !(p.army && !p.army.done) && p.loc === (st.loc === 'moved' ? 'home' : st.loc);
+    return !p.away && p.loc === st.loc;
+  };
+  const ageOf = (st, id, y) => { const p = id === 'friend' ? st.friend : fam(st, id); return y - p.by; };
+  const sib = st => st.sex === 'f' ? '姐姐' : '哥哥';     // 妹妹怎么叫你
+  const ta = st => st.sex === 'f' ? '她' : '他';
+  const fta = st => st.friend.sex === 'f' ? '她' : '他';
+  const evsOf = (st, y) => st.log.filter(e => e.y === y);
+  const has = (st, y, t, f) => evsOf(st, y).find(e => e.t === t && (!f || f(e)));
+  const placeWord = st => st.urban ? '一座小城' : '一个村子';
+
+  // ---------------- 章节：人生阶段 ----------------
+  function birth(st) {
+    const y = st.by, c = st.c, b = T.birthText(st);
+    const u5 = Math.round(E.actual(c, 'u5', y) * 10);
+    const lines = [L(y + ' 年，你出生在' + c.name + b.region + '的' + placeWord(st) + '里。')];
+    if (alive(st, 'dad')) lines.push(L('爸爸有一台旧收音机，每天晚上都要听新闻。', ['dad']));
+    if (alive(st, 'gma')) lines.push(L('奶奶说，你哭起来的声音，像你爸爸小时候。', ['gma']));
+    lines.push(L('那一年，' + c.name + '每 1000 个孩子里，有 ' + u5 + ' 个活不过五岁。'));
+    const z = E.zoneOf(st, y);
+    if (z === 'in') lines.push(L('你出生的时候，' + b.region + '已经在打仗了。'));
+    else if (z) lines.push(L('你出生的时候，这个国家的另一些地方，已经在打仗了。'));
+    return { key: 'birth', title: '出生', lines, scene: { time: 'dusk' } };
+  }
+  function sisBirth(st, y) {
+    const a = y - st.by, n = sisName(st);
+    const lines = [];
+    if (a < 2) lines.push(L('你还太小，不记得那天。后来妈妈说，' + n + '出生那天下着雨。'));
+    else {
+      lines.push(L(n + '出生那天下着雨。'));
+      if (here(st, 'dad')) lines.push(L('爸爸把收音机关了，说：别吵着她。', ['dad']));
+      if (alive(st, 'sis')) lines.push(L('你趴在床边看了很久。她的手，还没有你的一根手指长。', ['sis']));
+    }
+    if (!alive(st, 'sis')) lines.push(L('她只活了几个月。妈妈很久都不让别人提她的名字。'));
+    return { key: 'sisBirth', title: '妹妹', lines, scene: { time: 'dusk', weather: 'rain' } };
+  }
+  function drawing(st, y) {
+    const n = sisName(st);
+    return { key: 'drawing', title: '那张画', scene: { time: 'day' }, lines: [
+      L(n + '用你的旧衬衫，给布娃娃缠了一圈又一圈。', ['sis']),
+      L('「它摔伤了，」她说，「我是医生。」', ['sis']),
+      L('那天晚上，她画了一张画：一个穿白衣服的人，旁边歪歪扭扭写着她的名字。', ['sis']),
+      L('她把画塞进你的口袋：「你帮我收着。」', ['sis']),
+    ] };
+  }
+  function friend(st, y) {
+    if (!alive(st, 'friend')) return null;
+    const n = friendName(st);
+    const where = { home: '同一条街上的', city: '城里亲戚家隔壁的', abroad: '营地里隔壁帐篷的', abroad2: '在异乡，你认识了' }[st.friend.loc] || '同一条街上的';
+    const lines = [L(where + n + '，和你一般大。', ['friend'])];
+    if (st.friend.loc === 'abroad') lines.push(L('你们在营地的空地上，用一个瘪了的足球踢了一整个夏天。', ['friend']));
+    else if (E.zoneOf(st, y) === 'in') lines.push(L('你们在被炸塌的院墙后面，找到一个瘪了的足球。', ['friend']));
+    else lines.push(L('你们用一个瘪了的足球，在土路上踢了一整个夏天。', ['friend']));
+    if (st.friend.loc !== 'abroad') { /* 上面两种场景已经写了踢球 */ }
+    lines.push(L(n + '说，长大了要去城里的球队。你说你也去。', ['friend']));
+    return { key: 'friend', title: '朋友', lines, scene: { time: 'day', extra: 'friend' } };
+  }
+  function study(st, y) {
+    return { key: 'study', title: '十五岁', lines: [L('初中念完了。' + (here(st, 'dad') ? '爸爸蹲在门口抽烟，' : '') + '家里问你：还读吗？', here(st, 'dad') ? ['dad'] : [])] };
+  }
+  function marry(st, y) {
+    const spn = T.personName(st, 'sp', fam(st, 'sp').sex), s = sis(st), lines = [L('你和' + spn + '结婚了。')];
+    if (!alive(st, 'sp')) { lines.push(L('那一年还没过完，' + spn + '就走了。你把结婚时的衣服，叠好收进了箱子。')); return { key: 'marry', title: '成家', lines, scene: { time: 'dusk' } }; }
+    if (s && s.diedYear && s.diedYear < y) lines.push(L('婚礼上，你在桌边给' + sisName(st) + '留了一个位子。没人问为什么。'));
+    else if (s && s.alive && s.away === 'abroad') lines.push(L(sisName(st) + '在电话里哭了，说她回不来。'));
+    else if (s && s.alive && here(st, 'sis')) lines.push(L(sisName(st) + '给你们缝了一床被子，针脚很密。', ['sis'], true));
+    if (st.friend.diedYear && st.friend.diedYear < y) lines.push(L('你想，如果' + friendName(st) + '还在，' + fta(st) + '会是第一个来闹的人。'));
+    else if (here(st, 'friend')) lines.push(L(friendName(st) + '喝多了，抱着你哭。', ['friend'], true));
+    return { key: 'marry', title: '成家', lines, scene: { time: 'dusk' } };
+  }
+  function kid(st, y, e) {
+    const k = fam(st, e.who), n = T.personName(st, k.id, k.sex);
+    const lines = [L('你的' + (k.sex === 'f' ? '女儿' : '儿子') + n + '出生了。')];
+    if (!k.alive) { lines.push(L((k.sex === 'f' ? '她' : '他') + '只活了几个月。你把那件小衣服，一直留着。')); return { key: 'kid', title: '孩子', lines, scene: { time: 'night' } }; }
+    if (E.isWar(st, y) && (st.loc === 'home' || st.loc === 'moved' || st.loc === 'city')) lines.push(L('那天夜里，远处一直有闷响。' + n + '一声都没哭。', [k.id]));
+    else lines.push(L('你抱着' + (k.sex === 'f' ? '她' : '他') + '，在门口站了一整夜。', [k.id]));
+    return { key: 'kid', title: '孩子', lines, scene: { time: 'night' } };
+  }
+  // 女儿五岁：和妹妹小时候一样
+  function echo(st, y, k) {
+    const s = sis(st), n = T.personName(st, k.id, k.sex);
+    const lines = [L(n + '五岁那年，用旧衬衫给布娃娃缠了一圈又一圈。', [k.id])];
+    if (s && s.diedYear) lines.push(L('你在门口站了很久。'), L('你想起了' + sisName(st) + '。'));
+    else if (s && s.alive) lines.push(L('你给' + sisName(st) + '打了个电话。她在那头笑了很久。'));
+    return { key: 'echo', title: '旧衬衫', lines, scene: { time: 'day' } };
+  }
+  function mid(st, y) {
+    const lines = [L('你' + (y - st.by) + '岁了。' + (st.occ ? '你' + T.OCC[st.occ] + '，已经很多年。' : ''))];
+    const s = sis(st);
+    if (s && s.alive) lines.push(L(sisPathLine(st, y), []));
+    if (here(st, 'dad') && st.pocket.indexOf('radio') < 0) lines.push(L('爸爸老了，耳朵不太好，收音机总是开得很大声。', ['dad'], true));
+    else if (alive(st, 'dad')) lines.push(L('爸爸老了。你们隔几个月通一次电话，他总问你吃得好不好。', ['dad']));
+    else if (st.gotRadio) lines.push(L('那台收音机还在。你偶尔会打开它，听一会儿新闻。'));
+    return { key: 'mid', title: '中年', lines, scene: {} };
+  }
+  function old(st, y) {
+    const lines = [], s = sis(st);
+    lines.push(L('你' + (y - st.by) + '岁了。你喜欢坐在门口，看路上的孩子。'));
+    if (s && s.diedYear) {
+      const kept = st.pocket.indexOf('drawing:sis') >= 0;
+      if (kept) lines.push(L('你终于打开了' + sisName(st) + '那张画。纸已经黄了，白衣服还是白的。'));
+      else lines.push(L('那张画，丢在了很多年前的路上。你常常想，她画的那个人，到底长什么样。'));
+    }
+    return { key: 'old', title: '老了', lines, scene: { time: 'dusk' } };
+  }
+  function sisPathLine(st, y) {
+    const s = sis(st), n = sisName(st);
+    if (s.nurse) return n + '当了护士。她说，缝过的伤口，比她画过的画还多。';
+    if (s.away === 'married') return n + '嫁到了另一个镇，生了好几个孩子。她说她已经想不起来，小时候想当什么了。';
+    if (s.away === 'abroad' || s.loc === 'abroad' || s.loc === 'abroad2') return n + '在异乡的医院做清洁工，每天经过手术室门口。';
+    if (s.educated) return n + '在城里读完了书，在一家诊所帮忙。';
+    return n + '一直在家里帮忙。课本收在箱子底，很多年没打开过。';
+  }
+
+  // ---------------- 章节：战争带来的 ----------------
+  function war(st, y, e) {
+    const b = T.birthText(st), lines = [], s = sis(st), a = y - st.by;
+    if (e.away) lines.push(L('老家那边打起来了。你在电话里听到了枪声。'));
+    else if (e.zone === 'in') lines.push(L(y + ' 年，' + b.region + '来了军队。从这一年起，夜里常有枪声。'));
+    else if (e.zone === 'near') lines.push(L('隔壁省打起来了。车站里开始挤满从那边逃过来的人。'));
+    else lines.push(L('收音机里说，国家的另一头打起来了。离这里很远，远到你以为它不会来。'));
+    if (e.t === 'warAgain') lines[0] = L('安静了几年之后，枪声又回来了。');
+    const radioWithYou = st.pocket.indexOf('radio') >= 0;
+    if (!e.away && here(st, 'dad') && !radioWithYou) lines.push(L('收音机里的声音变得很急。爸爸把音量拧到最小，整夜没睡。', ['dad']));
+    else if (!e.away && here(st, 'dad')) lines.push(L('爸爸整夜坐在门口，听远处的动静。', ['dad']));
+    else if (!e.away && radioWithYou) lines.push(L('你把爸爸那台收音机拧到最小，整夜没睡。'));
+    else if (!e.away && here(st, 'mom')) lines.push(L('妈妈把门闩上了两道。', ['mom']));
+    if (s && here(st, 'sis') && y - s.by >= 4 && y - s.by <= 13 && e.t === 'warStart')
+      lines.push(L(sisName(st) + '问你：「打仗的时候，医生也要上班吗？」', ['sis']), L('你说不知道。'));
+    if (a < 4) lines.unshift(L('你还不记事。后来大人们说起那一年，都不说话了。'));
+    return { key: 'war', title: e.t === 'warAgain' ? '又打起来了' : '战争来了', lines, scene: { time: 'night' } };
+  }
+  function draftScript(st, y, e) {
+    const w = T.who(st, e.who);
+    const lines = [L('镇上来了人，要年轻人跟他们走。')];
+    if (e.who === 'dad') {
+      lines.push(L('爸爸走的那天，把收音机交给了你：「替我听着。」'));
+      lines.push(L('你抱着收音机，站在门口，直到看不见他。'));
+    } else lines.push(L(w + '跟着他们走了。妈妈追到了路口。'));
+    return { key: 'draftScript', title: '有人来敲门', lines, scene: {} };
+  }
+  function loss(st, y, e) {
+    const lines = [], who = e.who, cause = e.cause;
+    if (who === 'sis') {
+      if (cause === 'violence') lines.push(L('那天' + sisName(st) + '去井边打水。'), L('后来你很多年都不敢去那口井。'));
+      else if (cause === 'travel') lines.push(L(sisName(st) + '没能走到。你们把她留在了路边的一棵树下。'));
+      else lines.push(L(sisName(st) + '病了。' + (E.isWar(st, y) ? '诊所关着门，' : '') + '她走的时候很安静。'));
+      lines.push(L(st.pocket.indexOf('drawing:sis') >= 0 ? '口袋里那张画，你没有再打开过。' : '你想起她画的那个穿白衣服的人。'));
+    } else if (who === 'dad') {
+      if (e.away === 'army') lines.push(L('部队来了一封信。爸爸没有回来。'));
+      else if (cause === 'violence') lines.push(L('爸爸出门去买面包，再也没有回来。'));
+      else lines.push(L('爸爸病了。' + (E.isWar(st, y) ? '镇上的诊所关着门。' : '') + '他走的那天晚上，你把收音机打开，又关上了。'));
+      lines.push(L('收音机还在桌上。很久都没有人再去拧它。'));
+    } else {
+      const p = fam(st, who), w = T.who(st, who);
+      if (e.away === 'army') lines.push(L(w + '没有从前线回来。'));
+      else if (cause === 'violence') lines.push(L(pick([w + '没能回来。', '这一年，' + w + '死于冲突。'], R(st.seed, 'lv', who))));
+      else if (cause === 'travel') lines.push(L('路上，' + w + '没能走到。'));
+      else if (cause === 'child') lines.push(L(w + '没能熬过那个冬天。'));
+      else if (cause === 'old' && !E.isWar(st, y)) lines.push(L(w + '走了，走得很安详。'));
+      else lines.push(L(w + '病了，' + (E.isWar(st, y) ? '医生一直没来。' : '没能好起来。')));
+      if (p.rel === 'sp') lines.push(L('那天晚上，你一个人把桌上的两只碗都洗了。'));
+      if (p.rel === 'kid') lines.push(L('你把' + (p.sex === 'f' ? '她' : '他') + '的鞋，放在了门口。'));
+      if (p.rel === 'mom') lines.push(L('你再也闻不到她做的饭的味道了。'));
+    }
+    return { key: 'loss', title: '失去', lines, scene: { time: 'dusk' }, who };
+  }
+  function friendLoss(st, y, e) {
+    const n = friendName(st), lines = [];
+    if (e.army && st.army && st.army.withFriend && !st.army.done) lines.push(L('那天的阵地上，' + n + '没有回来。'), L(fta(st) + '的背包里，有一个瘪了的足球。'));
+    else if (e.army) lines.push(L('听说' + n + '死在了前线。'), L('你在土路上站了很久。那里以前是你们的球场。'));
+    else if (e.cause === 'violence') lines.push(L(n + '没能回来。'), L('你把那个瘪了的足球，放在了他家门口。'));
+    else lines.push(L(n + '病死了。你们说好要一起去城里的球队的。'));
+    return { key: 'friendLoss', title: n, lines, scene: { time: 'dusk' } };
+  }
+  function friendNews(st, y, e) {
+    const n = friendName(st);
+    if (e.t === 'friendDrafted') {
+      if (st.army && !st.army.done && st.army.withFriend) return { key: 'friendNews', title: '新兵营', lines: [L('在新兵营里，你看见了' + n + '。'), L('他冲你咧嘴笑，像小时候抢到球一样。')] };
+      if (!here(st, 'self') && !(st.loc === st.friend.loc || (st.loc === 'moved' && st.friend.loc === 'home'))) return { key: 'friendNews', title: n, lines: [L('听说' + n + '也被他们带走了。')] };
+      return { key: 'friendNews', title: n, lines: [L(n + '走的那天，冲你喊：「球替我收着，回来还要踢。」')] };
+    }
+    if (e.t === 'friendLeft') {
+      if (st.loc !== 'home' && st.loc !== 'moved') return { key: 'friendNews', title: n, lines: [L('听说' + n + '一家也走了，去了国外。')] };
+      return { key: 'friendNews', title: n, lines: [L(n + '一家走了，说是去国外。'), L('走之前，' + fta(st) + '在你家门口站了一会儿，什么都没说。')] };
+    }
+    if (e.t === 'friendBack' && alive(st, 'friend') && st.alive) {
+      if (here(st, 'friend')) return { key: 'friendNews', title: n, lines: [L(n + '回来了。', ['friend']), L('你们又去土路上踢了一会儿球。' + fta(st) + '跑不快了，你也是。', ['friend'], true)] };
+      return { key: 'friendNews', title: n, lines: [L('听说' + n + '从部队回来了。')] };
+    }
+    return null;
+  }
+  function house(st, y, e) {
+    const lines = [L(e.destroyed ? '一枚炮弹落在了你家。房子没了，只剩下半面墙。' : '一枚炮弹落在了院子里。房顶塌了一角，墙上全是裂缝。')];
+    const hurt = evsOf(st, y).filter(x => x.t === 'injury' && x.from === 'house');
+    hurt.forEach(h => lines.push(L(h.who === 'self' ? '你被埋在瓦砾下面，邻居把你挖了出来。' : T.who(st, h.who) + '受了伤。')));
+    if (here(st, 'sis') && ageOf(st, 'sis', y) < 14) lines.push(L(sisName(st) + '一直攥着你的衣角，不肯松手。', ['sis'], true));
+    return { key: 'house', title: '房子', lines, scene: {}, flash: true };
+  }
+  function leave(st, y, e) {
+    const lines = [];
+    if (e.loc === 'moved') lines.push(L('你们搬进了亲戚家的地下室。白天也要点灯。'));
+    else if (e.loc === 'city') lines.push(L('你们去了城里的亲戚家。一间屋子，住了九个人。'));
+    else if (e.loc === 'abroad' && !e.alone) lines.push(L('你们越过了边境，住进了难民营。'));
+    else if (e.loc === 'abroad2' && !e.quiet) lines.push(L('你们上了路，去一个更远的国家。'));
+    if (e.gmaStays) lines.push(L('奶奶不肯走。她说，房子总得有人看着。'));
+    if (!lines.length) return null;
+    return { key: 'leave', title: '离开', lines, scene: {} };
+  }
+  function army(st, y, e) {
+    if (e.t === 'armyStart') return { key: 'army', title: '军装', lines: [L('你穿上了不合身的军装。'), L(here(st, 'mom') ? '妈妈往你口袋里塞了一块馕，什么都没说。' : '没有人来送你。', here(st, 'mom') ? ['mom'] : [])] };
+    if (e.t === 'demob') return { key: 'army', title: '回家', lines: [L('你退伍回家了。'), L(e.trauma ? '夜里，你常常惊醒，以为自己还在战壕里。' : '没有人问你那几年发生了什么。你也没说。')] };
+    if (e.t === 'pow') return { key: 'army', title: '被俘', lines: [L('你被俘了。'), L('他们的年纪，和你差不多。')] };
+    if (e.t === 'comradeDeath') return { key: 'army', title: '战友', lines: [L('战友' + T.comradeName(st) + '没有回来。'), L('他说过，等仗打完，要请你去他家吃饭。')] };
+    if (e.t === 'injury' && e.who === 'self' && e.army) {
+      const lines = [L(e.leg ? '你受了伤。左腿再也没有好利索。' : '你受了伤，被抬进了野战医院。')];
+      const s = sis(st);
+      if (s && s.alive && s.nurse) lines.push(L('给你换药的人，是' + sisName(st) + '。你们都没说话。'));
+      return { key: 'army', title: '野战医院', lines };
+    }
+    return null;
+  }
+  function sisNews(st, y, e) {
+    const n = sisName(st);
+    if (e.t === 'sisNurse') return { key: 'sisNews', title: n, lines: [L('战地诊所缺人。' + ageOf(st, 'sis', y) + '岁的' + n + '，在那里一干就是好几年。'), L('她在信里写：今天给一个男孩缝了七针，他一直喊妈妈。')] };
+    if (e.t === 'sisMarried') return { key: 'sisNews', title: n, lines: [L(n + '十六岁那年，嫁去了另一个镇。家里实在太穷了。'), L(st.pocket.indexOf('drawing:sis') >= 0 ? '走的那天，她把那张画要了回去，看了很久，又塞回你手里：「还是你收着。」' : '走的那天，她没有回头。')] };
+    if (e.t === 'sisBack') return { key: 'sisNews', title: n, lines: [L(n + '在城里读完了书，回来了。'), L('她给你看她的毕业证，上面的字，比小时候写得好看多了。')] };
+    if (e.t === 'sentAbroad' && e.who === 'sis') return { key: 'sisNews', title: n, lines: [L(n + '走了。从此只能在电话里听到她的声音。')] };
+    return null;
+  }
+  function warEnd(st, y, e) {
+    const lines = [L(e.away ? '老家那边的枪声停了。' : '枪声停了。没人敢相信，但它真的停了。')];
+    const s = sis(st);
+    if (s && s.alive && here(st, 'sis')) lines.push(L('你和' + sisName(st) + '在老房子边上坐了一个下午。她说：「我还记得那张画。」', ['sis'], true));
+    else if (s && s.diedYear) lines.push(L('你去了那口井。井还在。'));
+    if (st.profiteer && st.stats.money >= 55) lines.push(L('你成了镇上最有钱的人之一。可很少有人来你家吃饭。'));
+    return { key: 'warEnd', title: '枪声停了', lines, scene: { time: 'day' } };
+  }
+
+  // ---------------- 选择章节 ----------------
+  const SC_TITLE = { draft: '有人来敲门', house: '怎么办', post: '训练结束', sisSchool: '学校', neighbor: '半夜', hospital: '医院',
+    grain: '粮食', sick: '病', relAbroad: '电话', refugees: '车站', hoard: '面粉', smuggleGoods: '货', buyHouse: '隔壁', famine: '口粮',
+    sendKid: '送走', earlyMarry: '提亲', desert: '夜里', smuggler: '位置', ret: '回去', enemy: '市场', comrade: '托付', rebuild: '重建',
+    study: '十五岁', migrate: '进城', workAbroad: '工地' };
+  function choice(st, p) {
+    const sc = T.scenarioText(st, p), lines = [];
+    if (p.id === 'sisSchool') {
+      const n = sisName(st);
+      lines.push(L('学校关了。城里的学校还开着，可是要住在姑妈家，一个月的饭钱，顶家里半个月。'),
+        L(n + '没说想去。她只是每天晚上，把旧课本从头翻到尾。', ['sis']));
+      sc.o = { sendSis: '送她去城里读书', keepSis: '留她在家' };
+    } else if (p.id === 'draft' && p.role === 'self') {
+      lines.push(L('镇上来了人，要年轻人跟他们走。名单上有你的名字。'));
+      if (here(st, 'mom')) lines.push(L('妈妈一夜没睡。', ['mom']));
+      if (here(st, 'dad')) lines.push(L('爸爸说：「你自己决定。」', ['dad']));
+    } else if (p.id === 'study') {
+      lines.push(L(st.school.years >= 9 ? '初中念完了。家里问你：还读吗？' : '书断断续续念了' + st.school.years + '年。家里问你：还读吗？'));
+      if (here(st, 'sis')) lines.push(L(sisName(st) + '趴在门边听。', ['sis']));
+    } else lines.push(L(sc.q, p.who && p.who !== 'self' ? [p.who] : []));
+    return {
+      key: 'choice:' + p.id, title: SC_TITLE[p.id] || '', lines,
+      options: p.options.map(o => ({ id: o, label: sc.o[o] || o, hint: T.hintText(p.hints[o]) })),
+    };
+  }
+  // 逃难时只能带一样
+  function takeOne(st) {
+    return { key: 'takeOne', title: '只能带一样', lines: [L('要走了。口袋里的东西，只能带走一样。')],
+      options: st.pocket.map((it, i) => ({ id: 'i' + i, label: T.itemLabel(st, it), hint: '' })) };
+  }
+  function careContext(st) {
+    const a = st.age;
+    if (st.loc === 'abroad') return '营地里的日子很长。你' + a + '岁了。';
+    if (st.army && !st.army.done) return '在部队的第' + (st.year - st.army.start + 1) + '年。';
+    if (E.isWar(st, st.year)) return '仗还在打。你' + a + '岁了。';
+    return a < 20 ? '你' + a + '岁了，个子蹿得很快。' : '你' + a + '岁了。';
+  }
+  function careChoice(st, p) {
+    return { key: 'care', title: '这一年', lines: [L(careContext(st)), L('这一年，你最在乎……')],
+      options: p.options.map(o => ({ id: o, label: T.careLabel(st, o), hint: '' })) };
+  }
+
+  // ---------------- 一年结束后：这一年值得讲成章节吗 ----------------
+  const LOSS_REL = { sis: 1, dad: 1, mom: 1, sp: 1, kid: 1 };
+  function chaptersOfYear(st, y) {
+    const evs = evsOf(st, y), out = [], a = y - st.by;
+    const push = c => { if (c && c.lines && c.lines.length) out.push(Object.assign({ y, age: a }, c)); };
+    if (y >= E.NOW && st.alive) return out;            // 2026 年以后只在最后讲
+    evs.forEach(e => {
+      if (e.t === 'sibBorn' && e.who === 'sis') push(sisBirth(st, y));
+      if ((e.t === 'warStart' && y > st.by) || e.t === 'warAgain') push(war(st, y, e));
+      if (e.t === 'draftDone' && e.role === 'child') push(draftScript(st, y, e));
+      if (e.t === 'house') push(house(st, y, e));
+      if (e.t === 'move') push(leave(st, y, e));
+      if (e.t === 'famDeath') {
+        const p = fam(st, e.who);
+        if (LOSS_REL[p.rel] || e.cause === 'violence' || e.cause === 'travel') push(loss(st, y, e));
+      }
+      if (e.t === 'friendDeath' && st.friend.met) push(friendLoss(st, y, e));
+      if (e.t === 'friendDrafted' || e.t === 'friendLeft' || e.t === 'friendBack') push(friendNews(st, y, e));
+      if (/^(armyStart|demob|pow|comradeDeath)$/.test(e.t) || (e.t === 'injury' && e.army)) push(army(st, y, e));
+      if (/^(sisNurse|sisMarried|sisBack)$/.test(e.t) || (e.t === 'sentAbroad' && e.who === 'sis')) push(sisNews(st, y, e));
+      if (e.t === 'warEnd') push(warEnd(st, y, e));
+      if (e.t === 'marry') push(marry(st, y));
+      if (e.t === 'kid' && st.fam.filter(p => p.rel === 'kid').length === 1) push(kid(st, y, e));
+    });
+    const d5 = st.fam.find(p => p.rel === 'kid' && p.sex === 'f' && p.alive && y - p.by === 5);
+    if (d5 && !st.echoed) { st.echoed = true; push(echo(st, y, d5)); }
+    if (a === 45 && st.alive) push(mid(st, y));
+    if (a === 66 && st.alive) push(old(st, y));
+    const ORDER = { war: 0, draftScript: 1, house: 2, loss: 3, friendLoss: 4, leave: 5, army: 6 };
+    out.sort((a, b) => (ORDER[a.key] ?? 9) - (ORDER[b.key] ?? 9));
+    return out.slice(0, 3);
+  }
+  // 物品带出来的章节（在年初的交互阶段）
+  function itemChapter(st, y, item) {
+    if (item === 'drawing:sis') return Object.assign({ y, age: y - st.by }, drawing(st, y));
+    if (item === 'football') { const f = friend(st, y); return f ? Object.assign({ y, age: y - st.by }, f) : null; }
+    return null;
+  }
+
+  // ---------------- 章节之间的一句话 ----------------
+  function bridge(st, y0, y1) {
+    y1 = Math.min(y1, E.NOW);
+    if (y1 <= y0) return null;
+    const bits = [];
+    const evs = st.log.filter(e => e.y >= y0 && e.y < y1);
+    evs.forEach(e => {
+      if (e.t === 'schoolStart') bits.push('你上了学');
+      if (e.t === 'grad') bits.push({ 6: '你读完了小学', 9: '你读完了初中', 12: '你读完了高中', 16: '你读完了大学' }[e.n]);
+      if (e.t === 'sibBorn' && e.who !== 'sis') bits.push(T.who(st, e.who) + '出生了');
+      if (e.t === 'work') bits.push('你开始' + T.OCC[e.occ]);
+      if (e.t === 'kid' && st.fam.filter(p => p.rel === 'kid' && p.by < e.y).length > 0) bits.push(T.who(st, e.who) + '出生了');
+      if (e.t === 'famDeath' && !LOSS_REL[fam(st, e.who).rel] && e.cause !== 'violence' && e.cause !== 'travel') bits.push(T.who(st, e.who) + '走了');
+      if (e.t === 'dropout') bits.push('你再也没有回到学校');
+      if (e.t === 'famBack') bits.push(T.who(st, e.who) + '从部队回来了');
+    });
+    const warYears = evs.filter(e => e.t === 'warDaily').length;
+    const n = y1 - y0, span = n === 1 ? y0 + ' 年' : y0 + '–' + (y1 - 1);
+    let s;
+    if (bits.length) s = bits.slice(0, 3).join('；') + '。';
+    else if (warYears >= Math.max(1, n / 2)) s = '仗一直没停。日子一天一天熬过去。';
+    else s = n > 1 ? '接下来的' + n + '年，日子平平常常。' : '这一年，日子平平常常。';
+    return { span, text: s };
+  }
+
+  // ---------------- 最后一章 ----------------
+  function final(st) {
+    const y = st.deathYear, a = y - st.by, lines = [];
+    const future = y >= E.NOW;
+    // 2026 年以后的部分，用两三句「也许」带过
+    if (future) {
+      const after = st.log.filter(e => e.y >= E.NOW && (e.t === 'marry' || e.t === 'kid' || (e.t === 'famDeath' && LOSS_REL[fam(st, e.who).rel])));
+      const bits = after.slice(0, 3).map(e => e.t === 'marry' ? '你结了婚' : e.t === 'kid' ? T.who(st, e.who) + '出生了' : T.who(st, e.who) + '走了');
+      lines.push(L('后来的事，还没有发生。' + (bits.length ? '也许，' + bits.join('，') + '。' : '也许，日子会平平常常地过下去。')));
+    }
+    const c = st.cause;
+    if (c === 'violence') lines.push(L(a < 15 ? '那一年，你没能活下来。你才' + a + '岁。' : (st.army && !st.army.done ? '那一年，你没有从前线回来。' : '这一年，你死于冲突。')));
+    else if (c === 'travel') lines.push(L('你没能走到。'));
+    else if (c === 'child') lines.push(L('你没能熬过那个冬天。'));
+    else if (c === 'old') lines.push(L((future ? '也许，' : '') + '你在' + a + '岁那年，在睡梦中离开了。'));
+    else lines.push(L((future ? '也许，' : '') + '你在' + a + '岁那年病倒了，再也没有起来。'));
+    // 妹妹的信：她还活着、你活到了 50 岁以后
+    const s = sis(st);
+    let letter = null;
+    if (s && s.alive && a >= 50) {
+      const n = sisName(st), body = [];
+      if (st.sisSchool === 'sendSis') body.push('我常常想起那年学校关门，你把我送去了城里。');
+      else if (st.sisSchool === 'keepSis') body.push('我常常想起那年学校关门。你说，等仗打完，就送我回学校。');
+      else body.push('我常常想起小时候，你背着我去河边。');
+      body.push(sisPathLine(st, y).replace(n, '我').replace('她说，', '').replace(/她/g, '我'));
+      body.push(st.pocket.indexOf('drawing:sis') >= 0 ? '那张画你还留着吗？留着吧。那是我唯一一张，长大以后的样子。' : '那张画丢了也没关系。我还记得我画的是什么。');
+      letter = { to: sib(st) + '：', body, from: '——' + n };
+    }
+    return { key: 'final', y, age: a, title: '最后', lines, letter, scene: { time: 'dusk' } };
+  }
+
+  // 结局卡上属于三个人的几行
+  function trio(st) {
+    const out = [], s = sis(st), n = sisName(st), f = st.friend, fn = friendName(st);
+    if (s && !s.unborn) {
+      if (s.diedYear && (s.cause === 'violence' || s.cause === 'travel' || s.diedYear - s.by < 40)) out.push(n + '死于' + (s.diedYear - s.by) + '岁。如果没有战争，她会是一名医生。');
+      else out.push(sisPathLine(st, st.deathYear || st.year).replace('她说，缝过的伤口，比她画过的画还多。', '') + '如果没有战争，她会是一名医生。');
+    }
+    if (f && f.met && f.diedYear && f.cause === 'violence') out.push(fn + '死于' + (f.diedYear - f.by) + '岁。' + (f.sex === 'f' ? '她' : '他') + '想去城里的球队。');
+    const dad = fam(st, 'dad');
+    if (dad && dad.diedYear && dad.diedYear >= st.by && (dad.cause === 'violence' || dad.away === 'army')) out.push('爸爸死于' + dad.diedYear + '年。那台收音机，你留到了最后。');
+    return out;
+  }
+
+  return { birth, chaptersOfYear, itemChapter, choice, takeOne, careChoice, bridge, final, trio, sisName, friendName, here, alive };
+});
+</script>
+<script>/* 《本该有的一生》流程：一章一章往外吐，界面和测试工具共用。
+ * const r = Runner.create(st); let ch = r.next(); ... r.answer(ch, optionId) ...
+ */
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) module.exports = factory(require('./engine.js'), require('./text.js'), require('./story.js'));
+  else root.Runner = factory(root.Engine, root.Text, root.Story);
+})(typeof self !== 'undefined' ? self : this, function (E, T, S) {
+  'use strict';
+  // 回看只在这些差别出现时才打扰玩家
+  const MEANINGFUL = new Set(['selfDies', 'selfLives', 'selfLonger', 'selfShorter', 'famDies', 'famLives', 'friendDies', 'friendLives',
+    'neverServed', 'leg', 'selfInjured', 'houseHit', 'prison']);
+
+  function create(st) {
+    const R = { st, cq: [], queue: [], qYear: null, pend: null, snap: null, recaps: [], meta: [], lastY: st.by, n: 0, started: false, finalShown: false };
+
+    function emit(ch) {
+      if (ch.key !== 'recap') ch.n = ++R.n;
+      if (ch.y == null) ch.y = st.year;
+      if (ch.age == null) ch.age = ch.y - st.by;
+      if (!ch.bridge && ch.y > R.lastY && ch.key !== 'recap') ch.bridge = S.bridge(st, R.lastY, ch.y);
+      if (ch.key !== 'recap') R.lastY = Math.max(R.lastY, ch.endOfYear ? ch.y + 1 : ch.y);
+      return ch;
+    }
+    function closeStage() {
+      const pend = R.pend; R.pend = null;
+      const alts = pend.choice.options.filter(o => o !== pend.opt).map(o => {
+        const br = E.runBranch(R.snap, pend.choice, o, st.year);
+        return { opt: o, branch: br, diff: E.diff(st, br, pend.start) };
+      });
+      R.recaps.push({ choice: pend.choice, alts });
+      const good = alts.filter(a => a.diff.items.some(it => MEANINGFUL.has(it.k)));
+      if (!good.length) return;
+      const r = T.recapText(st, pend, good.map(a => Object.assign({}, a, { diff: { items: a.diff.items.filter(it => MEANINGFUL.has(it.k) || it.k === 'lessSchool' || it.k === 'moreSchool') } })));
+      if (pend.choice.id === 'sisSchool') {
+        const lab = { sendSis: '送她去城里读书', keepSis: '留她在家' };
+        r.head = r.head.replace(/「[^」]*」/, '「' + lab[pend.opt] + '」');
+        r.alts.forEach((a, i) => { a.label = lab[good[i].opt]; });
+      }
+      R.cq.push({ key: 'recap', title: '回看', y: st.year - 1, recap: r });
+    }
+    function dropIndex() {   // 口袋满了：先放下和三个人无关的东西
+      const i = st.pocket.findIndex(it => !/^(drawing:sis|radio|football)$/.test(it));
+      return i >= 0 ? i : 0;
+    }
+
+    R.next = function () {
+      if (!R.started) { R.started = true; return emit(Object.assign({ y: st.by, endOfYear: false }, S.birth(st))); }
+      for (let guard = 0; guard < 400; guard++) {
+        if (R.cq.length) return emit(R.cq.shift());
+        if (!st.alive) {
+          if (R.pend) { closeStage(); continue; }
+          if (!R.finalShown) { R.finalShown = true; return emit(Object.assign({ endOfYear: true }, S.final(st))); }
+          return null;
+        }
+        if (st.year >= E.NOW) st.suppress = true;
+        if (R.qYear !== st.year) { R.queue = E.prompts(st); R.qYear = st.year; }
+        while (R.queue.length) {
+          const p = R.queue[0];
+          if (p.kind === 'pocket') {
+            R.queue.shift();
+            E.addItem(st, p.item, p.full ? dropIndex() : null);
+            // 交互是年初提前算好的；如果这期间已经搬走，朋友就是在新地方认识的
+            if (p.item === 'football') st.friend.loc = st.loc === 'moved' ? 'home' : st.loc;
+            const ic = st.year < E.NOW && S.itemChapter(st, st.year, p.item);
+            if (ic) R.cq.push(ic);
+            continue;
+          }
+          if (p.kind === 'care') {
+            R.queue.shift();
+            if (st.suppress) { E.applyCare(st, p.options[0]); continue; }
+            const last = R.cq[R.cq.length - 1];
+            const cc = S.careChoice(st, p);
+            if (last && !last.options) { last.options = cc.options; last.care = p; last.lines = last.lines.concat(cc.lines); }
+            else R.cq.push(Object.assign({ y: st.year, care: p }, cc));
+            continue;
+          }
+          if (p.kind === 'choice') {
+            if (R.pend) { closeStage(); continue; }
+            R.queue.shift();
+            if (st.suppress) { E.applyChoice(st, p, p.options[0]); continue; }
+            R.cq.push(Object.assign({ y: st.year, prompt: p }, S.choice(st, p)));
+            break;
+          }
+          R.queue.shift();
+        }
+        if (R.cq.length) continue;
+        if (st.needTakeOne) {
+          if (st.pocket.length > 1 && !st.suppress) { R.cq.push(Object.assign({ y: st.year, take: true }, S.takeOne(st))); continue; }
+          E.keepOnly(st, 0);
+        }
+        // 过一年
+        const y = st.year;
+        E.finishYear(st);
+        const z = E.zoneOf(st, y);
+        R.meta.push({ y, cls: (st.loc === 'abroad' || st.loc === 'abroad2') ? 'abroad' : z === 'in' ? 'war' : z ? 'near' : '' });
+        const chs = S.chaptersOfYear(st, y).map(c => Object.assign(c, { endOfYear: true }));
+        if (st.alive) {
+          R.queue = E.prompts(st); R.qYear = st.year;
+          // 房子被打中：把「怎么办」直接接在这一章后面
+          const hi = R.queue.findIndex(p => p.kind === 'choice' && p.id === 'house');
+          const hc = chs.find(c => c.key === 'house');
+          if (hi >= 0 && hc && !R.pend) {
+            const p = R.queue.splice(hi, 1)[0], cc = S.choice(st, p);
+            hc.options = cc.options; hc.prompt = p;
+            chs.splice(chs.indexOf(hc), 1); chs.push(hc);   // 带选择的这一章放到当年最后，免得后面的章节写的是选完以后的状态
+          }
+        }
+        if (R.pend && (st.year >= R.pend.start + 5 || !st.alive)) closeStage();
+        // 回看放在这一年的章节之前
+        const rec = R.cq.filter(c => c.key === 'recap');
+        R.cq = R.cq.filter(c => c.key !== 'recap').concat(rec, chs);
+      }
+      return null;
+    };
+
+    // 回答一个章节的选项；返回「选完以后的那一句」
+    R.answer = function (ch, id) {
+      if (ch.take) { E.keepOnly(st, +id.slice(1)); return '你只带走了' + T.itemLabel(st, st.took) + '。'; }
+      if (ch.care) { E.applyCare(st, id); return ''; }
+      if (ch.prompt) {
+        const p = ch.prompt, snap = E.clone(st);
+        E.applyChoice(st, p, id);
+        if (p.recap) { R.pend = { choice: p, opt: id, start: st.year }; R.snap = snap; }
+        if (p.id === 'sisSchool') return id === 'sendSis' ? '你们把' + S.sisName(st) + '送去了城里。她走的时候，把旧课本也带上了。' : S.sisName(st) + '留在了家里。课本被收进了箱子底。';
+        return T.choiceLine(st, p.id, id, p);
+      }
+      return '';
+    };
+    return R;
+  }
+  return { create };
 });
 </script>
 <script>/* 《本该有的一生》界面：开场 → 出生卡 → 逐年 → 交互面板 → 回看 → 结局卡 → 纪念馆 */
@@ -2482,8 +3121,8 @@ input:focus, textarea:focus { border-color: var(--accent); }
   function randomSeed() { return Math.random().toString(36).slice(2, 9); }
   function begin(seed, by, playerBy) {
     const st = E.newLife(seed, by);
-    G = { st, seed, playerBy: playerBy || null, used: {}, recaps: [], pend: null, snap: null, queue: null, qYear: null,
-      speed: 1, paused: false, timer: null, quiet: [], answers: {}, meta: [], ended: false, todayShown: false, lastStats: Object.assign({}, st.stats) };
+    G = { st, seed, playerBy: playerBy || null, runner: Runner.create(st), speed: 1, ended: false, finalShown: false, lastStats: Object.assign({}, st.stats) };
+    G.meta = G.runner.meta;
     const b = T.birthText(st);
     $('bcYear').textContent = b.year + ' 年 · ' + b.sex;
     $('bcName').textContent = b.name;
@@ -2507,7 +3146,7 @@ input:focus, textarea:focus { border-color: var(--accent); }
   $('btnStart').onclick = () => {
     $('feed').innerHTML = ''; $('grid').innerHTML = '';
     if (birthStop) { birthStop(); birthStop = null; }
-    show('life'); stageReset(); stageSet(sceneOf(G.st, G.st.by)); renderHud(); schedule(600);
+    show('life'); stageReset(); nextChapter();
   };
 
   // ---------------- HUD ----------------
@@ -2526,175 +3165,123 @@ input:focus, textarea:focus { border-color: var(--accent); }
     if (p.rel === 'sib' || p.rel === 'sp' || p.rel === 'kid') return rel + T.personName(st, p.id, p.sex);
     return rel;
   }
-  function renderHud() {
-    const st = G.st, y = Math.min(st.year, st.deathYear || st.year), age = y - st.by;
+  function renderHud(yy) {
+    const st = G.st, y = yy != null ? yy : Math.min(st.year, st.deathYear || st.year), age = y - st.by;
     $('hudYear').textContent = y + ' 年 · ' + G.st.c.name;
     $('hudAge').textContent = G.playerBy ? '你们都 ' + age + ' 岁' : age + ' 岁';
     const fb = $('famBar'); fb.innerHTML = '';
+    const others = st.fam.filter(p => p.rel === 'sib' && p.id !== 'sis' && p.alive && !p.unborn).length;
     st.fam.forEach(p => {
       if (p.unborn || (!p.alive && !p.diedYear)) return;
+      if (p.rel === 'sib' && p.id !== 'sis') return;           // 其他兄弟姐妹合并成一项
+      if (!p.alive && p.diedYear < st.by) return;
       const c = el('span', 'fam' + (!p.alive ? ' gone' : p.away ? ' away' : ''));
       c.textContent = p.alive ? famLabel(st, p) + (p.away === 'army' ? '·在部队' : p.away === 'abroad' ? '·在国外' : p.away === 'married' ? '·已出嫁' : '') : famLabel(st, p);
       fb.appendChild(c);
     });
+    if (others) fb.appendChild(el('span', 'fam', '兄弟姐妹 ×' + others));
+    const f = st.friend;
+    if (f && f.met) {
+      const c = el('span', 'fam friend' + (!f.alive ? ' gone' : (f.abroad || (f.army && !f.army.done)) ? ' away' : ''));
+      c.textContent = '朋友' + Story.friendName(st) + (f.alive && f.army && !f.army.done ? '·在部队' : f.alive && f.abroad ? '·在国外' : '');
+      fb.appendChild(c);
+    }
     renderStats($('statBar'), st.stats, G.lastStats);
     G.lastStats = Object.assign({}, st.stats);
     $('pocketView').textContent = st.pocket.length ? '口袋：' + st.pocket.map(i => T.itemLabel(st, i)).join('、') : '';
   }
 
-  // ---------------- 节奏 ----------------
-  function schedule(ms) {
-    clearTimeout(G.timer);
-    G.timer = setTimeout(tick, ms);
+  // ---------------- 章节 ----------------
+  const MOMENT = { war: 1, house: 1, loss: 1, friendLoss: 1, leave: 1, army: 1, warEnd: 1 };
+  function nextChapter() {
+    const ch = G.runner.next();
+    syncGrid();
+    if (!ch) return finish();
+    showChapter(ch);
   }
-  $('btnPause').onclick = () => {
-    G.paused = !G.paused;
-    $('btnPause').textContent = G.paused ? '继续' : '暂停';
-    if (!G.paused) schedule(200);
-  };
-  $('btnSpeed').onclick = () => {
-    G.speed = SPEEDS[(SPEEDS.indexOf(G.speed) + 1) % SPEEDS.length];
-    $('btnSpeed').textContent = G.speed + '×';
-  };
-
-  function tick() {
-    if (!G || G.paused || G.ended || sheetOpen()) return;
-    const st = G.st;
-    if (!st.alive) return finish();
-    if (G.qYear !== st.year) { G.queue = E.prompts(st); G.qYear = st.year; }
-    // 交互
-    if (G.queue.length) {
-      const p = G.queue[0];
-      if (p.kind === 'choice' && G.pend) { closeStage(() => schedule(200)); return; }
-      G.queue.shift();
-      return handlePrompt(p, () => schedule(250));
-    }
-    if (st.needTakeOne) return takeOne(() => schedule(250));
-    // 过一年
-    const y = st.year, hadPrompt = G.hadPrompt; G.hadPrompt = false;
-    E.finishYear(st);
-    const n = T.narrateYear(st, y, G.used);
-    const zone = E.zoneOf(st, y);
-    G.meta.push({ y, cls: (st.loc === 'abroad' || st.loc === 'abroad2') ? 'abroad' : zone === 'in' ? 'war' : zone ? 'near' : '' });
-    addSquare(G.meta[G.meta.length - 1].cls);
-    const quiet = n.filler && y - st.by >= 20 && !zone && !hadPrompt && st.alive && !G.pend;
-    if (quiet && G.quiet.length < 4) {
-      G.quiet.push({ y, text: n.text });
-      renderHud(); stageSet(sceneOf(st, y));
-      return schedule(Math.max(60, 220 / G.speed));
-    }
-    flushQuiet();
-    if (quiet) { G.quiet.push({ y, text: n.text }); renderHud(); return schedule(Math.max(60, 220 / G.speed)); }
-    addRow(y, n.text, { big: n.big, war: !!zone, death: n.dead });
-    renderHud();
-    stageSet(sceneOf(st, y));
-    const mo = momentOf(st, y);
-    if (mo) moment(mo.text, mo.flash);
-    const stageDone = G.pend && (st.year >= G.pend.start + 5 || !st.alive);
-    let d = (n.dead ? 3600 : n.big ? 2600 : BASE_DELAY) / G.speed;
-    if (mo) d = Math.max(d, momentHold() + 300);   // 字幕播完再往下走
-    if (stageDone) { setTimeout(() => closeStage(() => schedule(300)), Math.min(d, 1600)); return; }
-    schedule(d);
-  }
-  function flushQuiet() {
-    if (!G.quiet.length) return;
-    const q = G.quiet; G.quiet = [];
-    if (q.length === 1) addRow(q[0].y, q[0].text, {});
-    else addRow(q[0].y + '–' + String(q[q.length - 1].y).slice(-2), q[0].text.replace(/^也许，/, (q[0].y >= E.NOW ? '也许，' : '')), { note: false });
-  }
-  function addRow(yLabel, text, o) {
-    const feed = $('feed');
-    const y = parseInt(yLabel, 10);
-    if (!G.todayShown && y >= E.NOW && y > G.st.by) { feed.appendChild(el('div', 'today', '今天')); G.todayShown = true; }
-    const r = el('div', 'row' + (o.big ? ' big' : '') + (o.war ? ' war' : '') + (y >= E.NOW ? ' future' : '') + (o.death ? ' death' : '') + (o.choice ? ' choice' : '') + (o.note ? ' note' : ''));
-    r.innerHTML = '<span class="y">' + esc(yLabel) + '</span><span class="t">' + esc(text) + '</span>';
-    feed.appendChild(r);
-    feed.scrollTop = feed.scrollHeight;
+  function syncGrid() {
+    const g = $('grid');
+    while (g.children.length < G.runner.meta.length) addSquare(G.runner.meta[g.children.length].cls);
   }
   function addSquare(cls) { $('grid').appendChild(el('i', 'sq' + (cls ? ' ' + cls : ''))); }
-
-  // ---------------- 面板 ----------------
-  function sheetOpen() { return !$('sheet').classList.contains('hidden'); }
-  function openSheet(html, bind) {
-    $('sheetInner').innerHTML = html;
-    $('sheet').classList.remove('hidden');
-    bind($('sheetInner'));
+  function chapterScene(ch) {
+    const st = G.st, y = st.deathYear ? Math.min(ch.y, st.deathYear) : ch.y;
+    const sc = sceneOf(st, y, ch.key === 'final');
+    if (ch.scene && ch.scene.time) sc.time = ch.scene.time;
+    if (ch.scene && ch.scene.weather) sc.weather = ch.scene.weather;
+    return sc;
   }
-  function closeSheet() { $('sheet').classList.add('hidden'); }
-  const kicker = () => (G.st.year) + ' 年 · ' + G.st.age + ' 岁';
-
-  function handlePrompt(p, done) {
-    const st = G.st;
-    G.hadPrompt = true;
-    if (p.kind === 'care') {
-      openSheet('<div class="kicker">' + kicker() + '</div><h3>这一年，你最在乎……</h3>' +
-        p.options.map((o, i) => '<button class="opt" data-i="' + i + '">' + esc(T.careLabel(st, o)) + '</button>').join(''),
-      box => box.querySelectorAll('.opt').forEach(b => b.onclick = () => { E.applyCare(st, p.options[+b.dataset.i]); closeSheet(); done(); }));
-    } else if (p.kind === 'pocket') {
-      const name = T.itemLabel(st, p.item);
-      if (!p.full) { E.addItem(st, p.item, null); toast('放进口袋：' + name); renderHud(); return done(); }
-      openSheet('<div class="kicker">' + kicker() + '</div><h3>你得到了' + esc(name) + '。<br>口袋满了，要放下一样。</h3>' +
-        st.pocket.map((it, i) => '<button class="opt" data-i="' + i + '">放下 ' + esc(T.itemLabel(st, it)) + '</button>').join('') +
-        '<button class="opt" data-i="-1">不要' + esc(name) + '</button>',
-      box => box.querySelectorAll('.opt').forEach(b => b.onclick = () => { E.addItem(st, p.item, +b.dataset.i); closeSheet(); renderHud(); done(); }));
-    } else if (p.kind === 'ask') {
-      openSheet('<div class="kicker">' + kicker() + '</div><h3>' + esc(T.ASK[p.age]) + '</h3><textarea id="askIn" rows="2" maxlength="40" placeholder="写一句（可以不写）"></textarea>' +
-        '<button class="opt" id="askOk">记下</button><button class="opt" id="askSkip">跳过</button>',
-      box => {
-        box.querySelector('#askOk').onclick = () => { const v = box.querySelector('#askIn').value.trim(); if (v) G.answers[p.age] = v; closeSheet(); done(); };
-        box.querySelector('#askSkip').onclick = () => { closeSheet(); done(); };
+  function showChapter(ch) {
+    const feed = $('feed'), btn = $('btnNext');
+    btn.classList.add('hidden'); clearTimeout(G.nextT);
+    feed.querySelectorAll('.chap').forEach(c => c.classList.add('past'));
+    if (ch.bridge) feed.appendChild(el('div', 'bridge', '<span>' + esc(ch.bridge.span) + '</span>' + esc(ch.bridge.text)));
+    const box = el('section', 'chap' + (ch.key === 'recap' ? ' recap' : ''));
+    let n = 0;
+    const line = (txt, cls) => { const p = el('p', 'line' + (cls ? ' ' + cls : ''), esc(txt)); p.style.animationDelay = (0.3 + n++ * 0.6) + 's'; box.appendChild(p); return p; };
+    if (ch.key === 'recap') {
+      box.appendChild(el('div', 'chead', '回看'));
+      line(ch.recap.head); line(ch.recap.mine);
+      line('这一次，如果你……', 'muted');
+      ch.recap.alts.forEach(a => { const p = line('', 'alt'); p.innerHTML = '<b>' + esc(a.label) + '</b>：' + esc(a.text); });
+    } else {
+      box.appendChild(el('div', 'chead', (ch.n ? '第 ' + ch.n + ' 章 · ' : '') + esc(ch.title) + '<span>' + ch.y + ' · ' + ch.age + ' 岁</span>'));
+      ch.lines.forEach(l => line(l.t));
+      if (ch.letter) {
+        const lt = el('div', 'letter'); lt.style.animationDelay = (0.3 + n++ * 0.6) + 's';
+        lt.innerHTML = '<p>' + esc(ch.letter.to) + '</p>' + ch.letter.body.map(b => '<p>' + esc(b) + '</p>').join('') + '<p class="from">' + esc(ch.letter.from) + '</p>';
+        box.appendChild(lt); n += 2;
+      }
+    }
+    feed.appendChild(box);
+    setTimeout(() => box.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
+    renderHud(ch.y);
+    if (ch.key !== 'recap') stageSet(chapterScene(ch));
+    if (MOMENT[ch.key]) moment(ch.title, ch.key === 'house' || ch.key === 'war');
+    const wait = Math.min(0.3 + n * 0.6, 4) * 1000;
+    if (ch.key === 'final') G.finalShown = true;
+    if (ch.options) {
+      const opts = el('div', 'opts'); opts.style.animationDelay = (wait / 1000) + 's';
+      ch.options.forEach(o => {
+        const b = el('button', 'opt', esc(o.label) + (o.hint ? '<span class="h">' + esc(o.hint) + '</span>' : ''));
+        b.onclick = () => choose(ch, o, b, opts, box);
+        opts.appendChild(b);
       });
-    } else if (p.kind === 'choice') {
-      const sc = T.scenarioText(st, p);
-      openSheet('<div class="kicker">' + kicker() + '</div><h3>' + esc(sc.q) + '</h3>' +
-        p.options.map(o => '<button class="opt" data-o="' + o + '">' + esc(sc.o[o]) + (Object.keys(p.hints[o] || {}).length ? '<span class="h">' + esc(T.hintText(p.hints[o])) + '</span>' : '') + '</button>').join(''),
-      box => box.querySelectorAll('.opt').forEach(b => b.onclick = () => {
-        const opt = b.dataset.o;
-        const snap = E.clone(st);
-        E.applyChoice(st, p, opt);
-        if (p.recap) { G.pend = { choice: p, opt, start: st.year }; G.snap = snap; }
-        closeSheet(); renderHud(); done();
-      }));
-    } else done();
+      box.appendChild(opts);
+    } else {
+      G.nextT = setTimeout(() => { btn.textContent = ch.key === 'final' ? '回看这一生' : '继续'; btn.classList.remove('hidden'); }, wait);
+    }
   }
-  function takeOne(done) {
-    const st = G.st;
-    openSheet('<div class="kicker">' + kicker() + '</div><h3>要走了。口袋里的东西，只能带走一样。</h3>' +
-      st.pocket.map((it, i) => '<button class="opt" data-i="' + i + '">' + esc(T.itemLabel(st, it)) + '</button>').join(''),
-    box => box.querySelectorAll('.opt').forEach(b => b.onclick = () => { E.keepOnly(st, +b.dataset.i); closeSheet(); renderHud(); done(); }));
+  function choose(ch, o, b, opts, box) {
+    opts.querySelectorAll('button').forEach(x => { x.disabled = true; x.classList.add(x === b ? 'picked' : 'dim'); });
+    const res = G.runner.answer(ch, o.id);
+    if (res) { const p = el('p', 'line result', esc(res)); p.style.animationDelay = '0.1s'; box.appendChild(p); }
+    renderHud(G.st.year);
+    G.nextT = setTimeout(() => { $('btnNext').textContent = '继续'; $('btnNext').classList.remove('hidden'); }, 500);
   }
-  function closeStage(done) {
-    const st = G.st, pend = G.pend;
-    G.pend = null;
-    flushQuiet();
-    const alts = pend.choice.options.filter(o => o !== pend.opt).map(o => {
-      const br = E.runBranch(G.snap, pend.choice, o, st.year);
-      return { opt: o, branch: br, diff: E.diff(st, br, pend.start) };
-    });
-    G.recaps.push({ choice: pend.choice, alts });
-    const r = T.recapText(st, pend, alts);
-    openSheet('<div class="kicker">回看</div><div class="recap"><p>' + esc(r.head) + '<br>' + esc(r.mine) + '</p><p class="muted">这一次，如果你……</p>' +
-      r.alts.map(a => '<div class="alt"><b>' + esc(a.label) + '</b>：' + esc(a.text) + '</div>').join('') +
-      '</div><button class="opt" id="recapOk">继续</button>',
-    box => { box.querySelector('#recapOk').onclick = () => { closeSheet(); done(); }; });
-  }
+  $('btnNext').onclick = () => {
+    $('btnNext').classList.add('hidden');
+    if (!G || G.ended) return;
+    if (G.finalShown) return finish();
+    nextChapter();
+  };
 
   // ---------------- 结局 ----------------
   function finish() {
     if (G.ended) return;
-    flushQuiet();
     G.ended = true;
     const st = G.st;
     const run = () => {
       G.en = E.ending(st);
-      G.et = T.endingText(st, G.en, DATA.meta, G.recaps);
+      G.et = T.endingText(st, G.en, DATA.meta, G.runner.recaps);
+      G.et.trio = Story.trio(st);
       stageReset();
       $('endAsk').textContent = '留给' + T.pron(st) + '一句话。';
       $('endInput').value = '';
       $('endWords').classList.remove('hidden'); $('endCard').classList.add('hidden'); $('endBtns').classList.add('hidden');
       show('end');
     };
-    if (G.pend) closeStage(() => setTimeout(run, 400)); else setTimeout(run, 1600);
+    setTimeout(run, 300);
   }
   $('btnWords').onclick = () => {
     G.words = $('endInput').value.trim();
@@ -2728,6 +3315,7 @@ input:focus, textarea:focus { border-color: var(--accent); }
     c.appendChild(el('div', 'nm', esc(et.name)));
     c.appendChild(el('div', 'meta', st.by + '–' + end + ' · ' + esc(b.country + ' · ' + b.region)));
     et.main.forEach(s => c.appendChild(el('p', null, esc(s))));
+    (et.trio || []).forEach(s => c.appendChild(el('p', 'trio', esc(s))));
     c.appendChild(el('p', 'peace', esc(et.peace)));
     if (et.hard) c.appendChild(el('p', 'hard', esc(et.hard)));
     if (et.took) c.appendChild(el('p', null, esc(et.took)));
@@ -2830,6 +3418,9 @@ input:focus, textarea:focus { border-color: var(--accent); }
     ctx.fillStyle = '#9b8f80'; ctx.font = '30px ' + sans; text(st.by + '–' + (st.deathYear || st.year) + ' · ' + b.country + ' · ' + b.region, P, y); y += 78;
     ctx.font = '40px ' + serif; ctx.fillStyle = '#ece4d8';
     et.main.forEach(s => { y = wr(s, y, 62); });
+    ctx.font = '36px ' + serif; ctx.fillStyle = '#d8ccbb';
+    (et.trio || []).forEach(s => { y = wr(s, y + 4, 56); });
+    ctx.font = '40px ' + serif;
     y += 10; ctx.fillStyle = '#d9a35b'; y = wr(et.peace, y, 62);
     if (et.hard) { y += 10; ctx.fillStyle = '#e9d2b0'; y = wr(et.hard, y, 62); }
     if (et.took) { y += 6; ctx.fillStyle = '#ece4d8'; ctx.font = '34px ' + serif; y = wr(et.took, y, 54); }

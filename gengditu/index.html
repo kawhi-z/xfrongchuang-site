@@ -253,7 +253,7 @@ canvas#map{display:block;width:100%;height:100%}
     <div class="rkme" id="rkMe" style="display:none"></div>
     <div id="rkList"></div>
     <button class="pill blue wide" id="rkCta" style="margin-top:22px">参加今日挑战 →</button>
-    <p class="foot2">每天 0 点（北京时间）换一套题，每人只记第一局成绩。</p>
+    <p class="foot2">每人每天随机 5 题（2 简单 · 1 中等 · 2 困难），北京时间 0 点刷新，只记第一局成绩。</p>
     <button class="pill ghost back" data-go="home">← 回首页</button>
   </div>
 </section>
@@ -2627,7 +2627,7 @@ var qrcode = function() {
     return qrcode;
 }));
 
-// 前端与排行榜函数共用：计分、按日期确定「今日挑战」的 5 道题。
+// 前端与排行榜函数共用：计分、确定每个玩家「今日挑战」的 5 道题（日期 + uid 决定，每人不同、当天固定）。
 // 前端由 build.py 内联；函数端通过 module.exports 引用（tools/build_api.py 复制过去）。
 'use strict';
 
@@ -2653,7 +2653,7 @@ function dayKey(date = new Date()) {
   return d.toISOString().slice(0, 10);
 }
 
-// 以日期为种子的伪随机数（mulberry32），保证全国同一天抽到同一套题
+// 以字符串为种子的伪随机数（mulberry32）；服务端用同一种子重算题目，才能校验分数
 function seededRng(seed) {
   let h = 2166136261;
   for (let i = 0; i < seed.length; i++) h = Math.imul(h ^ seed.charCodeAt(i), 16777619);
@@ -2664,8 +2664,9 @@ function seededRng(seed) {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
-function pickDaily(questions, day) {
-  const rng = seededRng('gengditu:' + day), used = new Set();
+// 每人每天一套：仍按 2 简单 + 1 中等 + 2 困难抽，保证总分大体可比；同一 uid 当天刷新不会换题
+function pickDaily(questions, day, uid) {
+  const rng = seededRng(`gengditu:${day}:${uid}`), used = new Set();
   return PLAN.map(level => {
     const pool = questions.filter(q => q.level === level && !used.has(q.id)).sort((a, b) => a.id - b.id);
     const q = pool[Math.floor(rng() * pool.length)];
@@ -2681,7 +2682,7 @@ function scoreGuesses(qs, guesses) {
 
 if (typeof module !== 'undefined') module.exports = { MULTS, PLAN, PERFECT_KM, haversineKm, rawScore, dayKey, pickDaily, scoreGuesses };
 
-// 梗地图：「今日挑战」全国同一套 5 题、每天一次、进排行榜；「随机练习」从题库抽题、可无限重玩。
+// 梗地图：「今日挑战」每人一套随机 5 题、每天一次、进排行榜；「随机练习」从题库抽题、可无限重玩。
 // 交互与视觉参考 GeoSports：黑底等宽字、卫星底图、点一下即作答、揭晓时地图吐槽。
 // 数据由 tools/build.py 注入：CHINA（省界、九段线）、QUESTIONS（题库）、SAT（卫星图）、API_CONF（排行榜接口）。
 // 计分与每日抽题在 src/core.js（与排行榜函数共用）；二维码用 vendor/qrcode.js。
@@ -3022,7 +3023,7 @@ function startDaily() {
 }
 function startGame(mode) {
   const daily = mode === 'daily', day = dayKey();
-  Object.assign(S, { qs: daily ? pickDaily(QUESTIONS, day) : pickGame(), qi: 0, items: [], total: 0, mode: daily ? 'daily' : 'practice', day });
+  Object.assign(S, { qs: daily ? pickDaily(QUESTIONS, day, ensureUid()) : pickGame(), qi: 0, items: [], total: 0, mode: daily ? 'daily' : 'practice', day });
   for (const q of S.qs) mem.seen[q.id] = (mem.seen[q.id] || 0) + 1;
   save();
   $('runScore').textContent = '000';
@@ -3382,7 +3383,7 @@ function drawCard() {
   drawQr(g, shareUrl(), qx, qy, qs);
   g.textAlign = 'left'; g.textBaseline = 'alphabetic';
   g.fillStyle = '#67e8f9'; g.font = `800 34px ${F}`;
-  g.fillText(S.mode === 'daily' ? `${dayCn(S.day)}挑战，全国同一套题` : '同款热梗，你也来点点看', 64, H - 150);
+  g.fillText(S.mode === 'daily' ? `${dayCn(S.day)}挑战，全国排名中` : '同款热梗，你也来点点看', 64, H - 150);
   g.fillStyle = '#a3a3a3'; g.font = `500 26px ${F}`;
   g.fillText('长按识别二维码，看你能拿几分 →', 64, H - 104);
   g.fillStyle = '#525252'; g.font = `500 22px ${F}`; g.fillText('xfrongchuang.com/gengditu', 64, H - 66);
